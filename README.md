@@ -426,6 +426,20 @@ kubectl -n gitops-demo get pods,services
 підхоплює зміну з Git; ручний `kubectl apply` для сервісів не потрібний.
 Повний автоматичний build/tag/load/bootstrap буде додано на етапі 6.
 
+Для простої демонстрації GitOps змініть у
+`k8s/overlays/local/service-b/kustomization.yaml` кількість `replicas` з `1`
+на `2`, зробіть commit і push. Після синхронізації перевірте:
+
+```sh
+kubectl -n argocd get applications
+kubectl -n gitops-demo get deployment service-b
+kubectl -n gitops-demo get pods -l app=service-b
+```
+
+Service B матиме два готові Pod. Поверніть `replicas: 1` наступним Git commit;
+ArgoCD поверне Deployment до одного Pod. Зміна через Git доводить
+автоматичну синхронізацію manifest, але не є оновленням версії образу.
+
 ## Статус acceptance criteria
 
 Нумерація відповідає порядку критеріїв у задачі.
@@ -435,7 +449,8 @@ kubectl -n gitops-demo get pods,services
 | AC1: зв'язок A → B | URL у ConfigMap; виклик через Kubernetes Service DNS перевірено після Kustomize-розгортання | Повторити у фінальному walkthrough |
 | AC2: health і probes обох сервісів | Liveness/readiness probes підключено до Deployment; обидва Pod стали Ready; A лишився Ready при B = 0 | Повторити у фінальному walkthrough |
 | AC3: повільний/недоступний B | Timeout і `502` перевірені тестами; B = 0 та відновлення перевірено після Kustomize-розгортання | Повторити у фінальному walkthrough |
-| AC6: розділення конфігурації | Спільний base та local overlay з namespace і тегами образів перевірені через `kubectl kustomize` | Підключити overlay до ArgoCD |
+| AC6: розділення конфігурації | Спільний base та окремі local overlays A/B перевірені через Kustomize і ArgoCD | Повторити у фінальному walkthrough |
+| AC5: ArgoCD | Root і дві Applications зберігаються в Git; A та B синхронізовані з чистого namespace | Повторити у фінальному walkthrough |
 | AC7: correlation ID між сервісами | A передає ID до B; той самий ID перевірено в логах обох Pod | Повторити у фінальному walkthrough |
 | AC8: тести клієнта | Виконано: WireMock перевіряє успіх і помилки без B | Підтвердити в загальному walkthrough |
 
