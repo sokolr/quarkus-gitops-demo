@@ -10,6 +10,9 @@
 - Maven 3.9+ (`mvn -version`); Maven має використовувати JDK 21.
 - `curl` для ручної перевірки.
 - Docker, Minikube та `kubectl` для етапу локального Kubernetes.
+- Python 3 і `make` для автоматизованого bootstrap етапу 6.
+- Для окремого профілю `gitops-demo` виділіть Docker щонайменше 4 ГБ пам'яті;
+  якщо паралельно працює інший профіль Minikube, може знадобитися більше.
 - Git і доступ до публічного репозиторію
   [`sokolr/quarkus-gitops-demo`](https://github.com/sokolr/quarkus-gitops-demo) для GitOps.
 - Доступ до Maven Central для першого завантаження залежностей.
@@ -424,7 +427,7 @@ kubectl -n gitops-demo get pods,services
 `k8s/overlays/local/service-a/kustomization.yaml` на тег нового образу,
 завантажуйте образ у Minikube та робіть `git commit` і `git push`. ArgoCD
 підхоплює зміну з Git; ручний `kubectl apply` для сервісів не потрібний.
-Повний автоматичний build/tag/load/bootstrap буде додано на етапі 6.
+Автоматизований build/tag/load/bootstrap описано в розділі етапу 6 нижче.
 
 Для простої демонстрації GitOps змініть у
 `k8s/overlays/local/service-b/kustomization.yaml` кількість `replicas` з `1`
@@ -440,6 +443,68 @@ Service B матиме два готові Pod. Поверніть `replicas: 1`
 ArgoCD поверне Deployment до одного Pod. Зміна через Git доводить
 автоматичну синхронізацію manifest, але не є оновленням версії образу.
 
+## Відтворюваний bootstrap і реліз: етап 6
+
+З чистої машини встановіть передумови вище, запустіть Docker і клонуйте
+[публічний репозиторій](https://github.com/sokolr/quarkus-gitops-demo):
+
+```sh
+git clone https://github.com/sokolr/quarkus-gitops-demo.git
+cd quarkus-gitops-demo
+make up
+make verify
+```
+
+`make up` вимагає чисту гілку `main`, що збігається з `origin/main`.
+Він перевіряє Java 21, Maven і Docker; бере теги образів із local overlays;
+збирає відсутні образи з Quarkus fast-jar і завантажує їх у Minikube. Наявні
+локальні теги не перезаписує. Окремий профіль `gitops-demo` створюється з
+Docker driver, `containerd`, 2 CPU та 4096 МБ пам'яті. Команда встановлює
+ArgoCD `v3.5.6`, одноразово створює root Application і чекає, доки root, A та B
+будуть `Synced / Healthy` на поточному Git commit, а обидва Deployment готові.
+Повторний `make up` безпечний. Усі команди Kubernetes використовують явний
+context `gitops-demo`; профіль `minikube` з попередніх етапів не змінюється.
+
+`make verify` показує revision, стани Applications, теги образів і готовність
+Deployment. Через тимчасові port-forward він перевіряє liveness/readiness
+обох сервісів і HTTP-виклик A → B з correlation ID. Port-forward автоматично
+закривається наприкінці перевірки.
+
+Щоб підготувати нову версію одного сервісу, за потреби змініть його код і
+тести, а потім виконайте:
+
+```sh
+make release SERVICE=service-b
+git diff
+git add -- service-b k8s/overlays/local/service-b/kustomization.yaml
+git commit -m "Release service-b <тег, показаний make release>"
+git push origin main
+```
+
+`make release` перевіряє, що профіль запущений, `HEAD` відповідає
+`origin/main`, а зміни робочого дерева належать лише вибраному модулю.
+Він запускає тести, створює унікальний тег `release-<UTC-час>-<Git-SHA>`,
+будує й завантажує образ, змінює тільки `newTag` відповідного overlay та
+перевіряє Kustomize. Команда друкує точні команди Git зі справжнім тегом;
+приклад вище показує порядок дій. Commit і push виконуються окремо після
+перегляду diff. ArgoCD сам побачить зміну в Git; `kubectl apply` для сервісу
+не потрібний. Дочекайтеся синхронізації та повторіть `make verify`.
+
+Для повного прибирання лише цього навчального кластера:
+
+```sh
+make down
+make down  # повторний виклик також безпечний
+```
+
+`make down` видаляє тільки профіль `gitops-demo` разом з ArgoCD і Pod.
+Профіль `minikube`, Git-репозиторій та образи Docker на хості залишаються.
+Після `make down` команда `make up` відтворить стан із GitHub. Для першого
+завантаження Maven-залежностей, базового Docker-образу, Minikube та manifest
+ArgoCD потрібен доступ до інтернету. Локальна збірка образу на іншій машині
+може дати інші байти під тим самим тегом; для точного збігу потрібен спільний
+registry з образом за digest.
+
 ## Статус acceptance criteria
 
 Нумерація відповідає порядку критеріїв у задачі.
@@ -449,15 +514,12 @@ ArgoCD поверне Deployment до одного Pod. Зміна через Gi
 | AC1: зв'язок A → B | URL у ConfigMap; виклик через Kubernetes Service DNS перевірено після Kustomize-розгортання | Повторити у фінальному walkthrough |
 | AC2: health і probes обох сервісів | Liveness/readiness probes підключено до Deployment; обидва Pod стали Ready; A лишився Ready при B = 0 | Повторити у фінальному walkthrough |
 | AC3: повільний/недоступний B | Timeout і `502` перевірені тестами; B = 0 та відновлення перевірено після Kustomize-розгортання | Повторити у фінальному walkthrough |
-| AC6: розділення конфігурації | Спільний base та окремі local overlays A/B перевірені через Kustomize і ArgoCD | Повторити у фінальному walkthrough |
+| AC4: новий тег образу | `make release` створює унікальний тег; оновлення в Deployment через Git перевіряється на етапі 6 | Повторити у фінальному walkthrough |
 | AC5: ArgoCD | Root і дві Applications зберігаються в Git; A та B синхронізовані з чистого namespace | Повторити у фінальному walkthrough |
+| AC6: розділення конфігурації | Спільний base та окремі local overlays A/B перевірені через Kustomize і ArgoCD | Повторити у фінальному walkthrough |
 | AC7: correlation ID між сервісами | A передає ID до B; той самий ID перевірено в логах обох Pod | Повторити у фінальному walkthrough |
 | AC8: тести клієнта | Виконано: WireMock перевіряє успіх і помилки без B | Підтвердити в загальному walkthrough |
+| AC9: чистий bootstrap | `make up/down/verify` працюють з окремим профілем `gitops-demo` | Повторити на іншій чистій машині |
 
-Образи A та B на етапі 3 зібрано й запущено з окремим незмінним тегом
-`stage3-20261030083352`. AC4 повністю закриється після оновлення версії через
-Git commit і синхронізацію ArgoCD.
-
-AC4 (повний GitOps version upgrade) і AC9 (відтворюваний bootstrap) залежать від
-наступного етапу. Репозиторій публічний, тому умова AC10 щодо credentials для
-приватного Git не застосовується. Скриптів bootstrap/teardown поки немає.
+Репозиторій публічний, тому умова AC10 щодо credentials для приватного Git
+не застосовується. Підсумковий walkthrough і ADR залишаються етапом 7.
