@@ -17,6 +17,28 @@
   [`sokolr/quarkus-gitops-demo`](https://github.com/sokolr/quarkus-gitops-demo) для GitOps.
 - Доступ до Maven Central для першого завантаження залежностей.
 
+## Швидкий запуск GitOps
+
+Із чистого clone публічного репозиторію та запущеним Docker:
+
+```sh
+git clone https://github.com/sokolr/quarkus-gitops-demo.git
+cd quarkus-gitops-demo
+make up
+make verify
+make down
+```
+
+`make up` збирає відсутні образи, створює **окремий** профіль Minikube
+`gitops-demo` і чекає `Synced / Healthy` від ArgoCD. `make down` видаляє тільки
+цей профіль. Зміни застосунків надалі проходять через Git commit/push;
+одноразове створення root Application входить до bootstrap.
+
+Повний сценарій усіх acceptance criteria наведено у
+[walkthrough](docs/walkthrough.md), а причини архітектурних рішень — в
+[ADR](docs/adr/0001-local-gitops.md). Розділи етапів 3–4 нижче зберігають
+навчальні ручні перевірки; для звичайного запуску використовуйте команди вище.
+
 ## Збірка, тести та запуск
 
 Із кореня `quarkus-gitops-demo` зберіть обидва сервіси:
@@ -399,7 +421,7 @@ Kustomize overlay, автоматично синхронізує зміни і �
 завантажені у Minikube до синхронізації. Для публічного GitHub-репозиторію
 облікові дані ArgoCD не потрібні.
 
-Разова перевірка з чистим application namespace (до появи `make up` на етапі 6):
+Історична ручна перевірка з чистим application namespace до автоматизованого bootstrap:
 
 ```sh
 kubectl config current-context   # minikube
@@ -514,12 +536,13 @@ registry з образом за digest.
 | AC1: зв'язок A → B | URL у ConfigMap; виклик через Kubernetes Service DNS перевірено після Kustomize-розгортання | Повторити у фінальному walkthrough |
 | AC2: health і probes обох сервісів | Liveness/readiness probes підключено до Deployment; обидва Pod стали Ready; A лишився Ready при B = 0 | Повторити у фінальному walkthrough |
 | AC3: повільний/недоступний B | Timeout і `502` перевірені тестами; B = 0 та відновлення перевірено після Kustomize-розгортання | Повторити у фінальному walkthrough |
-| AC4: новий тег образу | `make release` створює унікальний тег; оновлення в Deployment через Git перевіряється на етапі 6 | Повторити у фінальному walkthrough |
+| AC4: новий тег образу | Реліз B через Git-коміт `12bc4f0` та ArgoCD перевірено | Живий реліз A у фінальному walkthrough |
 | AC5: ArgoCD | Root і дві Applications зберігаються в Git; A та B синхронізовані з чистого namespace | Повторити у фінальному walkthrough |
 | AC6: розділення конфігурації | Спільний base та окремі local overlays A/B перевірені через Kustomize і ArgoCD | Повторити у фінальному walkthrough |
 | AC7: correlation ID між сервісами | A передає ID до B; той самий ID перевірено в логах обох Pod | Повторити у фінальному walkthrough |
 | AC8: тести клієнта | Виконано: WireMock перевіряє успіх і помилки без B | Підтвердити в загальному walkthrough |
-| AC9: чистий bootstrap | `make up/down/verify` працюють з окремим профілем `gitops-demo` | Повторити на іншій чистій машині |
+| AC9: чистий bootstrap | `make up/down/verify` працюють з окремим профілем `gitops-demo` | Перевірити новий clone без кешованих образів; інша фізична машина не перевірялася |
 
 Репозиторій публічний, тому умова AC10 щодо credentials для приватного Git
-не застосовується. Підсумковий walkthrough і ADR залишаються етапом 7.
+не застосовується. Фінальний [walkthrough](docs/walkthrough.md) містить
+сценарій перевірки всіх критеріїв і межі перевірки AC9.
