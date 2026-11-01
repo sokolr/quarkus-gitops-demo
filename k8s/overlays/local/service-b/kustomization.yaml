@@ -6,3 +6,6 @@ resources:
 images:
   - name: gitops-demo/service-b
     newTag: stage3-20261030083352
+replicas:
+  - name: service-b
+    count: 2
