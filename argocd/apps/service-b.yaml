@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: service-b
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/sokolr/quarkus-gitops-demo.git
+    targetRevision: main
+    path: k8s/overlays/local/service-b
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gitops-demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
