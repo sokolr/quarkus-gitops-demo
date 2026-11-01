@@ -5,7 +5,7 @@ resources:
   - ../../../base/service-b
 images:
   - name: gitops-demo/service-b
-    newTag: stage3-20261030083352
+    newTag: release-20261101163243-5afeb93b
 replicas:
   - name: service-b
     count: 1
