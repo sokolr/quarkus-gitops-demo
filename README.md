@@ -26,13 +26,14 @@ git clone https://github.com/sokolr/quarkus-gitops-demo.git
 cd quarkus-gitops-demo
 make up
 make verify
-make down
 ```
 
 `make up` збирає відсутні образи, створює **окремий** профіль Minikube
 `gitops-demo` і чекає `Synced / Healthy` від ArgoCD. `make down` видаляє тільки
 цей профіль. Зміни застосунків надалі проходять через Git commit/push;
 одноразове створення root Application входить до bootstrap.
+
+Коли закінчите роботу з кластером, виконайте `make down`.
 
 Повний сценарій усіх acceptance criteria наведено у
 [walkthrough](docs/walkthrough.md), а причини архітектурних рішень — в
@@ -533,15 +534,15 @@ registry з образом за digest.
 
 | Критерій | Перевірено | Що залишається |
 | --- | --- | --- |
-| AC1: зв'язок A → B | URL у ConfigMap; виклик через Kubernetes Service DNS перевірено після Kustomize-розгортання | Повторити у фінальному walkthrough |
-| AC2: health і probes обох сервісів | Liveness/readiness probes підключено до Deployment; обидва Pod стали Ready; A лишився Ready при B = 0 | Повторити у фінальному walkthrough |
-| AC3: повільний/недоступний B | Timeout і `502` перевірені тестами; B = 0 та відновлення перевірено після Kustomize-розгортання | Повторити у фінальному walkthrough |
-| AC4: новий тег образу | Реліз B через Git-коміт `12bc4f0` та ArgoCD перевірено | Живий реліз A у фінальному walkthrough |
-| AC5: ArgoCD | Root і дві Applications зберігаються в Git; A та B синхронізовані з чистого namespace | Повторити у фінальному walkthrough |
-| AC6: розділення конфігурації | Спільний base та окремі local overlays A/B перевірені через Kustomize і ArgoCD | Повторити у фінальному walkthrough |
-| AC7: correlation ID між сервісами | A передає ID до B; той самий ID перевірено в логах обох Pod | Повторити у фінальному walkthrough |
-| AC8: тести клієнта | Виконано: WireMock перевіряє успіх і помилки без B | Підтвердити в загальному walkthrough |
-| AC9: чистий bootstrap | `make up/down/verify` працюють з окремим профілем `gitops-demo` | Перевірити новий clone без кешованих образів; інша фізична машина не перевірялася |
+| AC1: зв'язок A → B | ConfigMap задає Service DNS; A повернув дані B у кластері | Перевірено локально |
+| AC2: health і probes обох сервісів | Probes підключені; A лишився Ready при B = 0 | Перевірено локально |
+| AC3: повільний/недоступний B | Timeout і помилки покриті тестами; Git-масштабування B до 0 дало `502`, відновлення — `200` | Перевірено локально |
+| AC4: новий тег образу | Релізи B `12bc4f0` і A `8e90ff2` перейшли в Deployment через Git та ArgoCD | Теги унікальні; побітова тотожність між машинами не доведена |
+| AC5: ArgoCD | Root і дві Applications у Git; після відновлення B всі `Synced / Healthy` на `bd619d4` | Перевірено локально |
+| AC6: розділення конфігурації | Base і окремі local overlays A/B зібрані Kustomize | Перевірено локально |
+| AC7: correlation ID між сервісами | `walkthrough-123` у відповіді та логах A і B | Перевірено локально |
+| AC8: тести клієнта | WireMock перевіряє успіх і помилки без B; тести A 6/6, B 9/9 | Перевірено локально |
+| AC9: чистий bootstrap | Новий clone, профіль і збірка обох відсутніх образів через `make up/verify` | Інша фізична машина не перевірялася |
 
 Репозиторій публічний, тому умова AC10 щодо credentials для приватного Git
 не застосовується. Фінальний [walkthrough](docs/walkthrough.md) містить

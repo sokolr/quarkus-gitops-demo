@@ -47,6 +47,10 @@ kubectl --context gitops-demo -n gitops-demo get configmap service-a-config \
   -o jsonpath='{.data.SERVICE_B_URL}'
 kubectl --context gitops-demo -n gitops-demo describe deployment service-a
 kubectl --context gitops-demo -n gitops-demo describe deployment service-b
+kubectl kustomize k8s/base/service-a >/dev/null
+kubectl kustomize k8s/base/service-b >/dev/null
+kubectl kustomize k8s/overlays/local/service-a >/dev/null
+kubectl kustomize k8s/overlays/local/service-b >/dev/null
 (cd service-a && mvn clean package)
 (cd service-b && mvn clean package)
 make verify
@@ -54,12 +58,14 @@ make verify
 
 ConfigMap має містити `http://service-b:8080`. В обох Deployment мають бути
 readiness `/q/health/ready` та liveness `/q/health/live`; `make verify`
-перевіряє `UP`, HTTP `200` A → B і correlation ID. Тести запускаються
+перевіряє `UP`, HTTP `200` A → B і correlation ID. Чотири команди Kustomize
+підтверджують окреме збирання base та local overlays (AC6). Тести запускаються
 послідовно: обидва Quarkus-набори використовують порт `8081`. Тести клієнта
 A використовують WireMock без запущеного B.
 
 Щоб побачити один ID в обох логах, відкрийте port-forward A в окремому
-терміналі та залиште його для перевірки збою:
+терміналі та залиште його для перевірки збою. Якщо локальний порт `18082`
+зайнятий, виберіть вільний і замініть його в наступних `curl`:
 
 ```sh
 kubectl --context gitops-demo -n gitops-demo port-forward service/service-a 18082:8080
@@ -172,5 +178,19 @@ make verify
 
 ## Фактичні результати
 
-Заповнюються після проходження сценарію: SHA живого релізу A, SHA збою та
-відновлення B, теги образів, результати тестів, `make verify` і стан профілів.
+Сценарій виконано 1 листопада 2026 року на macOS, Minikube `v1.39.0`,
+Kubernetes `v1.37.0`, ArgoCD `v3.5.6`, Java 21 та Quarkus `3.40.1.1`.
+
+| Крок | Фактичний результат |
+| --- | --- |
+| Чистий clone `b1fca1a` | Після видалення профілю та обох потрібних тегів з Docker `make up` зібрав A і B з коду; `make verify` пройшов. Початкові root, A, B: `Synced / Healthy` на `b1fca1a`. Профіль `minikube` залишився `OK`. |
+| Тести | Service A: 6/6, Service B: 9/9; усі без помилок. |
+| DNS, probes, ID | ConfigMap: `http://service-b:8080`; у Deployment A і B підключено `/q/health/ready` та `/q/health/live`. ID `walkthrough-123` був у відповіді A та логах A і B. |
+| Реліз A `8e90ff2` | Тег `release-20261101214958-b1fca1a4` завантажено до push. До push Deployment мав старий тег; після sync — новий. `make verify` підтвердив HTTP `200`. |
+| Збій B `317b08e` | Git задав `replicas: 0`; Pod B зник. A повернув `502`, `{"error":"SERVICE_B_UNAVAILABLE"}`, `X-Correlation-ID: b-down-123`; readiness A відповів `200` і `UP`. У логу A: `reason=CONNECTION_ERROR`. |
+| Відновлення B `bd619d4` | Git повернув `replicas: 1`; B став `1/1`, A знову повернув `200`. Root, A і B: `Synced / Healthy` на `bd619d4`; `make verify` пройшов. |
+
+Усі застосунки завершили walkthrough у справному стані. Межа AC9:
+перевірено новий clone і чистий локальний профіль на тому самому комп'ютері;
+окрему фізичну машину не перевіряли. Образи не мають спільного registry/digest,
+тому побітова тотожність повторної локальної збірки не доведена.
