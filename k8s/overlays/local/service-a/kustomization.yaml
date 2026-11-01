@@ -5,4 +5,4 @@ resources:
   - ../../../base/service-a
 images:
   - name: gitops-demo/service-a
-    newTag: stage3-20261030083352
+    newTag: release-20261101214958-b1fca1a4
