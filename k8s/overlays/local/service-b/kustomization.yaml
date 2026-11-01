@@ -8,4 +8,4 @@ images:
     newTag: release-20261101163243-5afeb93b
 replicas:
   - name: service-b
-    count: 0
+    count: 1
