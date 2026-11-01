@@ -5,14 +5,20 @@ require_command kubectl
 require_command minikube
 require_command python3
 require_command curl
+require_command git
 require_running_profile
+git fetch --quiet origin main || die 'Не вдалося прочитати origin/main.'
+expected_revision="$(git rev-parse origin/main)"
+[[ "$(git rev-parse HEAD)" == "$expected_revision" ]] \
+  || die 'Локальний HEAD відрізняється від origin/main.'
 
 log verify 'ArgoCD Applications:'
 k -n argocd get applications gitops-demo-root service-a service-b \
   -o custom-columns='NAME:.metadata.name,REVISION:.status.sync.revision,SYNC:.status.sync.status,HEALTH:.status.health.status'
 for app in gitops-demo-root service-a service-b; do
   state="$(application_state "$app")"
-  [[ "$state" == Synced\ Healthy\ * ]] || die "$app має стан: $state"
+  [[ "$state" == "Synced Healthy $expected_revision" ]] \
+    || die "$app має стан: $state; очікувався Synced Healthy $expected_revision"
 done
 log verify 'Deployment images і готовність:'
 k -n gitops-demo get deployments service-a service-b \

@@ -465,8 +465,8 @@ ArgoCD `v3.5.6`, одноразово створює root Application і чек�
 Повторний `make up` безпечний. Усі команди Kubernetes використовують явний
 context `gitops-demo`; профіль `minikube` з попередніх етапів не змінюється.
 
-`make verify` показує revision, стани Applications, теги образів і готовність
-Deployment. Через тимчасові port-forward він перевіряє liveness/readiness
+`make verify` звіряє revision усіх Applications з `origin/main`, показує їхні
+стани, теги образів і готовність Deployment. Через тимчасові port-forward він перевіряє liveness/readiness
 обох сервісів і HTTP-виклик A → B з correlation ID. Port-forward автоматично
 закривається наприкінці перевірки.
 
