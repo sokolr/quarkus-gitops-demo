@@ -14,6 +14,6 @@ public class RestController {
 
     @GET
     public InfoResponse info() {
-        return new InfoResponse("B", "Hello from Service B");
+        return new InfoResponse("B", "Hello from Service B!!!!");
     }
 }
