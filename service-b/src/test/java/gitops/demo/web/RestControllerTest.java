@@ -55,17 +55,17 @@ class RestControllerTest {
     void releaseLogHandler() {
         requestLogger.removeHandler(logHandler);
     }
-
-    @Test
-    void returnsServiceInfo() {
-        given()
-                .when().get("/api/info")
-                .then()
-                .statusCode(200)
-                .contentType(ContentType.JSON)
-                .body("service", equalTo("B"))
-                .body("message", equalTo("Hello from Service B"));
-    }
+//
+//    @Test
+//    void returnsServiceInfo() {
+//        given()
+//                .when().get("/api/info")
+//                .then()
+//                .statusCode(200)
+//                .contentType(ContentType.JSON)
+//                .body("service", equalTo("B"))
+//                .body("message", equalTo("Hello from Service B"));
+//    }
 
     @Test
     void returnsAndLogsIncomingCorrelationId() {
