@@ -485,6 +485,8 @@ make verify
 Docker driver, `containerd`, 2 CPU та 4096 МБ пам'яті. Команда встановлює
 ArgoCD `v3.5.6`, одноразово створює root Application і чекає, доки root, A та B
 будуть `Synced / Healthy` на поточному Git commit, а обидва Deployment готові.
+Bootstrap задає ArgoCD перевірку Git кожні `30s` без додаткового jitter;
+при зміні параметрів перезапускає application-controller і repo-server.
 Повторний `make up` безпечний. Усі команди Kubernetes використовують явний
 context `gitops-demo`; профіль `minikube` з попередніх етапів не змінюється.
 
