@@ -51,15 +51,8 @@ k -n argocd rollout status deployment/argocd-server --timeout=300s
 k -n argocd rollout status deployment/argocd-repo-server --timeout=300s
 k -n argocd rollout status statefulset/argocd-application-controller --timeout=300s
 
-step=argocd_polling
-polling="$(k -n argocd get configmap argocd-cm -o json | python3 -c '
-import json
-import sys
-
-data = json.load(sys.stdin).get("data") or {}
-print(data.get("timeout.reconciliation", "") + " "
-      + data.get("timeout.reconciliation.jitter", ""))
-')"
+polling="$(k -n argocd get configmap argocd-cm \
+  -o jsonpath='{.data.timeout\.reconciliation} {.data.timeout\.reconciliation\.jitter}')"
 if [[ "$polling" != '30s 0s' ]]; then
   log "$step" 'Налаштовую перевірку Git кожні 30 секунд без jitter.'
   k -n argocd patch configmap argocd-cm --type merge \
