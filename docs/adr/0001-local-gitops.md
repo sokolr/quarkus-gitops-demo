@@ -21,14 +21,12 @@ GitHub — єдиний віддалений компонент інфрастр
 Код A, код B, Dockerfile, Kustomize та ArgoCD Applications тримаємо в одному
 публічному репозиторії. Один commit може зв'язати зміну коду з бажаною версією
 образу; публічний Git дозволяє ArgoCD читати manifests без credentials.
-Сценарій приватного Git із AC10 тут не застосовується.
 
 Kustomize base містить спільні Deployment, Service і ConfigMap, а local
 overlays задають namespace та конкретні теги. Окремі overlays A і B дають
 кожному сервісу власну ArgoCD Application. Root Application зберігається в
 Git і створюється одноразово під час bootstrap; надалі ArgoCD автоматично
-синхронізує дочірні Applications. Helm для цього невеликого набору ресурсів
-додав би шаблони, яких поточна конфігурація не потребує.
+синхронізує дочірні Applications.
 
 ## Збій B і health A
 
