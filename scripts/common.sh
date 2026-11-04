@@ -6,6 +6,9 @@ PROFILE=gitops-demo
 CONTEXT=gitops-demo
 ARGOCD_VERSION=v3.5.6
 ARGOCD_MANIFEST="https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml"
+ARGO_ROLLOUTS_VERSION=v1.10.1
+ARGO_ROLLOUTS_MANIFEST="https://github.com/argoproj/argo-rollouts/releases/download/${ARGO_ROLLOUTS_VERSION}/install.yaml"
+ISTIO_VERSION=1.31.3
 
 log() { printf '[%s] %s\n' "${1}" "${2}"; }
 die() { printf 'ПОМИЛКА: %s\n' "$*" >&2; exit 1; }
@@ -51,7 +54,7 @@ wait_for_applications() {
   local expected_revision="$1" deadline=$((SECONDS + 600)) app state all_ready
   while (( SECONDS < deadline )); do
     all_ready=true
-    for app in gitops-demo-root service-a service-b; do
+    for app in gitops-demo-root postgres observability service-a service-b; do
       state="$(application_state "$app")"
       if [[ "$state" != "Synced Healthy $expected_revision" ]]; then
         all_ready=false
@@ -62,7 +65,7 @@ wait_for_applications() {
     fi
     sleep 5
   done
-  for app in gitops-demo-root service-a service-b; do
+  for app in gitops-demo-root postgres observability service-a service-b; do
     printf '%s: %s\n' "$app" "$(application_state "$app")" >&2
   done
   die "ArgoCD не досяг Synced/Healthy на revision $expected_revision за 10 хвилин."

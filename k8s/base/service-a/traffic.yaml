@@ -1,0 +1,39 @@
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: service-a
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - service-a.demo.local
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: service-a
+spec:
+  hosts:
+    - service-a
+    - service-a.demo.local
+  gateways:
+    - mesh
+    - service-a
+  http:
+    - name: primary
+      route:
+        - destination:
+            host: service-a-stable
+            port:
+              number: 8080
+          weight: 100
+        - destination:
+            host: service-a-canary
+            port:
+              number: 8080
+          weight: 0

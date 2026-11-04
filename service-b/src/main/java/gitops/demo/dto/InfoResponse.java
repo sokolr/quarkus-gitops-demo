@@ -1,4 +1,7 @@
 package gitops.demo.dto;
 
-public record InfoResponse(String service, String message) {
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record InfoResponse(String service, String message, String description) {
 }

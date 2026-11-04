@@ -14,9 +14,22 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: gitops-demo
+  ignoreDifferences:
+    - group: networking.istio.io
+      kind: VirtualService
+      name: service-a
+      jqPathExpressions:
+        - .spec.http[].route[].weight
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/selector/rollouts-pod-template-hash
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+      - RespectIgnoreDifferences=true
+      - PruneLast=true

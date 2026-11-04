@@ -3,9 +3,13 @@ kind: Kustomization
 namespace: gitops-demo
 resources:
   - ../../../base/service-b
+patches:
+  - path: fault.yaml
+    target:
+      group: argoproj.io
+      version: v1alpha1
+      kind: Rollout
+      name: service-b
 images:
   - name: gitops-demo/service-b
-    newTag: release-20261102103259-7ea2c587
-replicas:
-  - name: service-b
-    count: 1
+    newTag: task2-v2-analysis-20261104

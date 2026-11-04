@@ -62,7 +62,8 @@ class RestControllerTest {
         WireMockResource.server.stubFor(get(urlEqualTo("/api/info"))
                 .willReturn(aResponse().withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody("{\"service\":\"B\",\"message\":\"Hello from Service B\"}")));
+                        .withBody("{\"service\":\"B\",\"message\":\"Hello from Service B\","
+                                + "\"description\":\"Added in V2\"}")));
 
         given()
                 .header("X-Correlation-ID", "demo-123")

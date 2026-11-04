@@ -1,12 +1,42 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
 metadata:
   name: service-a
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: service-a
+  strategy:
+    canary:
+      stableService: service-a-stable
+      canaryService: service-a-canary
+      maxSurge: 1
+      maxUnavailable: 0
+      trafficRouting:
+        istio:
+          virtualService:
+            name: service-a
+            routes:
+              - primary
+      steps:
+        - setWeight: 10
+        - analysis:
+            templates:
+              - templateName: canary-success-rate
+            args:
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+        - setWeight: 50
+        - analysis:
+            templates:
+              - templateName: canary-success-rate
+            args:
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+        - setWeight: 100
   template:
     metadata:
       labels:
@@ -52,6 +82,30 @@ metadata:
   name: service-a
 spec:
   type: ClusterIP
+  selector:
+    app: service-a
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-a-stable
+spec:
+  selector:
+    app: service-a
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-a-canary
+spec:
   selector:
     app: service-a
   ports:

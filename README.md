@@ -4,6 +4,175 @@
 обидва мають health endpoints і передають correlation ID. Локальний запуск працює
 без Kubernetes.
 
+## Task 2, етап 1: дані та API
+
+Service B тепер зберігає повідомлення в PostgreSQL. `GET /api/info` зберігає
+поля `{ "service": "B", "message": "..." }`, але читає `message` з БД. Service A
+тому не потребує змін. `PUT /api/info/message` з JSON
+`{ "message": "Новий текст" }` замінює повідомлення й повертає оновлений
+`InfoResponse`. Порожнє повідомлення або текст довший за 500 символів дає
+HTTP `400`.
+
+```sh
+cd service-b
+mvn test
+mvn quarkus:dev -Dquarkus.http.port=8081
+
+# в іншому терміналі
+curl -s http://localhost:8081/api/info
+curl -s -X PUT http://localhost:8081/api/info/message \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Збережено в PostgreSQL"}'
+curl -s http://localhost:8081/api/info
+```
+
+Для тестів і dev-режиму потрібен запущений Docker: Quarkus Dev Services
+піднімає тимчасовий PostgreSQL. У production-режимі Service B читає
+`DB_JDBC_URL`, `DB_USERNAME`, `DB_PASSWORD` з середовища; значення не зберігаються
+в репозиторії. Flyway на старті застосовує версійну міграцію
+`V1__create_service_message.sql`, яка створює таблицю та початковий рядок.
+Пул з'єднань обмежено п'ятьма на Pod. Вбудована перевірка Agroal позначає
+`/q/health/ready` як `DOWN`, коли БД недоступна; liveness не залежить від БД.
+Якщо B не може прочитати повідомлення, його API повертає помилку, а Service A
+перетворює помилку B на HTTP `502`.
+
+У кластері Service B отримує адресу БД та credentials із Kubernetes Secret;
+опис bootstrap наведено в етапі 3 нижче.
+
+## Task 2, етап 2: сумісна міграція V2
+
+Файл `V2__add_service_description.sql` додає nullable-колонку
+`description VARCHAR(500)`. Він не змінює й не видаляє `message`. V2 Service B
+повертає `description` у `GET /api/info`, коли її встановлено. Для запису:
+
+```sh
+curl -s -X PUT http://localhost:8081/api/info/description \
+  -H 'Content-Type: application/json' \
+  -d '{"description":"Опис версії 2"}'
+curl -s http://localhost:8081/api/info
+```
+
+`description` може залишатися `NULL` для старих рядків; API приймає непорожній
+текст до 500 символів. Коли значення `NULL`, поле не включається до JSON, тому
+відповідь має попередню форму. Service A ігнорує додаткове поле у відповіді B.
+
+Послідовність релізу: спочатку працює образ B V1 із міграцією V1; потім перший
+Pod B V2 застосовує V2 до спільної БД і починає canary. Поки V1 і V2 працюють
+одночасно, V1 читає/пише `message`, а нова колонка залишається необов'язковою.
+Якщо V2 відкочено, схема лишається V2: Flyway у V1 сприймає її як майбутню
+версію, а старий SQL і далі працює. Відкат застосунку не запускає `flyway clean`
+або зворотну міграцію. Для демонстрації rollout збережіть окремий образ V1
+до побудови образу V2.
+
+У цьому проєкті Flyway запускається під час старту кожного Pod. Якщо кілька
+нових Pod стартують одночасно, Flyway координує їх блокуванням БД: міграцію
+виконує один Pod, інші чекають і потім перевіряють уже застосовану версію.
+До завершення міграцій Pod не стає Ready. Це підходить для короткої
+транзакційної зміни `ADD COLUMN`; довгі або нетранзакційні зміни варто виносити
+в окремий крок релізу.
+
+У межах одного релізу безпечно додавати nullable-колонки, які старий код не
+використовує. `DROP`, перейменування чи нове обмеження `NOT NULL` для поля,
+яке пише V1, потребують кількох релізів: спершу додати нову колонку, далі
+перевести всіх читачів і письменників, потім дочекатися завершення періоду
+відкату й лише окремою міграцією прибрати стару колонку.
+
+## Task 2, етап 3: PostgreSQL, Secret, Rollouts та Istio
+
+`make up` створює профіль Minikube `gitops-demo` із 4 CPU та 7168 МБ пам'яті,
+встановлює Argo Rollouts `v1.10.1` та Istio `1.31.3`, а потім запускає ArgoCD.
+Перед запуском зміни мають бути закомічені й відправлені в `origin/main`:
+ArgoCD читає GitHub, а `make up` перевіряє збіг локального та віддаленого commit.
+ArgoCD керує PostgreSQL StatefulSet, PVC та двома Rollout. PostgreSQL 18
+зберігає дані на PVC `data-postgres-0` (2 GiB, стандартний StorageClass).
+Перезапуск Pod PostgreSQL чи Service B не видаляє PVC. `make down` видаляє весь
+профіль Minikube разом із даними — це повне прибирання середовища.
+
+Пароль БД генерується випадково під час першого `make up`; команда створює
+Kubernetes Secret `service-b-db` із ключами `username` і `password` у namespace
+`gitops-demo`. Повторний `make up` використовує наявний Secret. Якщо PVC вже є,
+а Secret втрачено, bootstrap зупиняється, щоб не створити пароль, який не
+відповідає існуючій БД. Пароль не додається в Git і не друкується в лог.
+Kubernetes Secret — сховище всередині кластера, не зовнішній Vault; значення
+Secret за замовчуванням не шифруються в etcd. Для цього локального прикладу
+обрано дозволений задачею bootstrap Secret; для production потрібне окреме
+керування ключами та шифрування Secret.
+
+```sh
+make up
+make verify
+kubectl --context gitops-demo -n gitops-demo get statefulset/postgres pvc/data-postgres-0 secret/service-b-db
+kubectl --context gitops-demo -n gitops-demo get rollouts service-a service-b
+kubectl --context gitops-demo -n gitops-demo get virtualservice service-a service-b
+```
+
+Обидва Rollout мають 2 базові репліки та canary-кроки 10%, 50%, 100% із
+автоматичним аналізом після 10% і 50%. Argo Rollouts змінює ваги в Istio VirtualService; stable
+та canary Service вибирають відповідні ReplicaSet. `service-b` спрямовує
+запити A → B через sidecar, `service-a.demo.local` — вхідні запити через
+Istio ingress gateway. Ваги задають імовірність маршрутизації кожного запиту,
+тому маленька вибірка не обов'язково дасть рівно 10/50%. Прямий port-forward
+до Service або Pod обходить Istio та не перевіряє canary-ваги.
+
+```sh
+kubectl --context gitops-demo -n istio-system port-forward service/istio-ingressgateway 18080:80
+# в іншому терміналі
+curl -H 'Host: service-a.demo.local' http://127.0.0.1:18080/api/aggregate
+```
+
+ArgoCD ігнорує поля ваг VirtualService та hash-селектор stable/canary Service,
+якими керує Rollouts; це запобігає конфлікту між reconciler-ами. Під час
+аналізу Rollout має стан `Progressing`; після успішного завершення —
+`Healthy`. Невдалий аналіз автоматично повертає трафік на stable та позначає
+Rollout і ArgoCD Application як `Degraded` до повернення бажаного стану в Git.
+Для демонстрації V1 → V2 потрібні два різні образи B: образ V1 слід зберегти
+до оновлення overlay на образ V2.
+
+## Task 2, етап 4: автоматичний аналіз і відкат
+
+ArgoCD Application `observability` встановлює локальний Prometheus, `AnalysisTemplate`
+та Pod `canary-traffic`. Prometheus кожні 10 секунд збирає з Istio sidecar
+метрику `istio_requests_total` для A і B. Генератор надсилає приблизно 5
+запитів/с до A через mesh; A викликає B. Він потрібен, щоб canary мав дані
+навіть без ручних запитів. Це навантаження лише для демонстрації.
+
+Після встановлення 10% і 50% Argo Rollouts запускає окремий AnalysisRun. Він
+чекає 45 секунд на накопичення метрик і тричі з інтервалом 15 секунд вимірює
+частку HTTP-відповідей без 5xx **саме Pod нового ReplicaSet** за останню хвилину.
+Усі три виміри мають бути не нижче 95%. Будь-який вимір нижче 95%, включно
+з відсутністю запитів, провалює аналіз і автоматично повертає 100% трафіку
+на stable. Під час недоступності Prometheus аналіз не може підтвердити успіх;
+перевіряйте AnalysisRun замість примусового promotion.
+
+```sh
+kubectl --context gitops-demo -n gitops-demo get deployment/prometheus deployment/canary-traffic analysistemplate/canary-success-rate
+kubectl --context gitops-demo -n gitops-demo get analysisruns
+kubectl --context gitops-demo -n gitops-demo describe rollout/service-b
+kubectl --context gitops-demo -n gitops-demo port-forward service/prometheus 9090:9090
+# Prometheus UI: http://127.0.0.1:9090
+```
+
+Щоб продемонструвати автоматичний abort, спочатку дочекайтеся `Healthy` для
+Service B з `DEMO_FAULT_PERCENT=0`. Далі змініть лише `value: "0"` на `"100"`
+у `k8s/overlays/local/service-b/fault.yaml`, закомітьте й відправте зміну в
+`origin/main`. Ця зміна Pod template створює новий canary; його `GET /api/info`
+повертає 503 у 100% випадків, але readiness залишається `UP`. Контролер
+повинен створити `AnalysisRun` зі станом `Failed`, зробити `Aborted` для B та
+повернути вагу canary на 0. Перевірте:
+
+```sh
+kubectl --context gitops-demo -n gitops-demo get analysisruns
+kubectl --context gitops-demo -n gitops-demo get rollout/service-b virtualservice/service-b
+kubectl --context gitops-demo -n argocd get application/service-b
+```
+
+ArgoCD лишається `Synced`, бо бажана несправна конфігурація все ще в Git;
+здоров'я Application стає `Degraded`. Rollouts не записує відкат у Git і не
+перезапускає несправний canary у циклі. Щоб закрити інцидент, поверніть у
+`fault.yaml` значення `"0"`, закомітьте та відправте зміни. У цьому демо
+ввімкнення помилки змінює конфігурацію нового Pod, а не код образу; для
+окремих релізів V1/V2 використовуйте різні теги образів.
+
 ## Передумови
 
 - JDK 21 (`java -version`).
@@ -11,7 +180,7 @@
 - `curl` для ручної перевірки.
 - Docker, Minikube та `kubectl` для етапу локального Kubernetes.
 - Python 3 і `make` для автоматизованого bootstrap етапу 6.
-- Для окремого профілю `gitops-demo` виділіть Docker щонайменше 4 ГБ пам'яті;
+- Для окремого профілю `gitops-demo` виділіть Docker щонайменше 8 ГБ пам'яті;
   якщо паралельно працює інший профіль Minikube, може знадобитися більше.
 - Git і доступ до публічного репозиторію
   [`sokolr/quarkus-gitops-demo`](https://github.com/sokolr/quarkus-gitops-demo) для GitOps.
@@ -29,16 +198,17 @@ make verify
 ```
 
 `make up` збирає відсутні образи, створює **окремий** профіль Minikube
-`gitops-demo` і чекає `Synced / Healthy` від ArgoCD. `make down` видаляє тільки
-цей профіль. Зміни застосунків надалі проходять через Git commit/push;
+`gitops-demo` і чекає `Synced / Healthy` від ArgoCD. `make down` видаляє цей
+профіль разом із PostgreSQL PVC. Зміни застосунків надалі проходять через Git commit/push;
 одноразове створення root Application входить до bootstrap.
 
 Коли закінчите роботу з кластером, виконайте `make down`.
 
 Повний сценарій усіх acceptance criteria наведено у
 [walkthrough](docs/walkthrough.md), а причини архітектурних рішень — в
-[ADR](docs/adr/0001-local-gitops.md). Розділи етапів 3–4 нижче зберігають
-навчальні ручні перевірки; для звичайного запуску використовуйте команди вище.
+[ADR](docs/adr/0001-local-gitops.md). Навчальні ручні сценарії Task 1 нижче
+описують попередні Deployment і не є інструкцією для поточних Rollout;
+для звичайного запуску використовуйте команди вище.
 
 ## Збірка, тести та запуск
 
@@ -53,7 +223,7 @@ cd ../service-a && mvn clean package
 
 ```sh
 cd service-b
-java -Dquarkus.http.port=8081 -jar target/quarkus-app/quarkus-run.jar
+mvn quarkus:dev -Dquarkus.http.port=8081
 ```
 
 Запустіть A в другому терміналі з кореня репозиторію:

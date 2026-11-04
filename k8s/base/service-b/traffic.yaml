@@ -1,0 +1,22 @@
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: service-b
+spec:
+  hosts:
+    - service-b
+  gateways:
+    - mesh
+  http:
+    - name: primary
+      route:
+        - destination:
+            host: service-b-stable
+            port:
+              number: 8080
+          weight: 100
+        - destination:
+            host: service-b-canary
+            port:
+              number: 8080
+          weight: 0

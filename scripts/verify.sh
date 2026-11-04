@@ -13,18 +13,26 @@ expected_revision="$(git rev-parse origin/main)"
   || die 'Локальний HEAD відрізняється від origin/main.'
 
 log verify 'ArgoCD Applications:'
-k -n argocd get applications gitops-demo-root service-a service-b \
+k -n argocd get applications gitops-demo-root postgres observability service-a service-b \
   -o custom-columns='NAME:.metadata.name,REVISION:.status.sync.revision,SYNC:.status.sync.status,HEALTH:.status.health.status'
-for app in gitops-demo-root service-a service-b; do
+for app in gitops-demo-root postgres observability service-a service-b; do
   state="$(application_state "$app")"
   [[ "$state" == "Synced Healthy $expected_revision" ]] \
     || die "$app має стан: $state; очікувався Synced Healthy $expected_revision"
 done
-log verify 'Deployment images і готовність:'
-k -n gitops-demo get deployments service-a service-b \
-  -o custom-columns='NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image,READY:.status.readyReplicas,DESIRED:.spec.replicas'
-k -n gitops-demo rollout status deployment/service-a --timeout=120s
-k -n gitops-demo rollout status deployment/service-b --timeout=120s
+log verify 'PostgreSQL, PVC, Secret і Rollout:'
+k -n gitops-demo get statefulset/postgres pvc/data-postgres-0 secret/service-b-db
+k -n gitops-demo rollout status statefulset/postgres --timeout=120s
+k -n gitops-demo wait --for=jsonpath='{.status.phase}'=Bound pvc/data-postgres-0 --timeout=120s
+k -n gitops-demo get rollouts service-a service-b \
+  -o custom-columns='NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image,PHASE:.status.phase,READY:.status.readyReplicas,DESIRED:.spec.replicas'
+k -n gitops-demo wait --for=jsonpath='{.status.phase}'=Healthy rollout/service-a --timeout=120s
+k -n gitops-demo wait --for=jsonpath='{.status.phase}'=Healthy rollout/service-b --timeout=120s
+k -n gitops-demo get virtualservice service-a service-b
+log verify 'Prometheus, AnalysisTemplate і генератор трафіку:'
+k -n gitops-demo rollout status deployment/prometheus --timeout=120s
+k -n gitops-demo rollout status deployment/canary-traffic --timeout=120s
+k -n gitops-demo get analysistemplate/canary-success-rate
 
 tmpdir="$(mktemp -d)"
 pids=()
@@ -37,8 +45,8 @@ cleanup() {
 }
 trap cleanup EXIT
 start_forward() {
-  local service="$1" log_file="$tmpdir/$1.log" port="" pid
-  k -n gitops-demo port-forward "service/$service" :8080 --address 127.0.0.1 \
+  local namespace="$1" service="$2" target_port="$3" log_file="$tmpdir/$2.log" port="" pid
+  k -n "$namespace" port-forward "service/$service" ":$target_port" --address 127.0.0.1 \
     >"$log_file" 2>&1 &
   pid=$!
   pids+=("$pid")
@@ -55,10 +63,14 @@ start_forward() {
   die "Не вдалося створити port-forward для $service."
 }
 
-start_forward service-a
+start_forward gitops-demo service-a-stable 8080
 port_a="$PF_PORT"
-start_forward service-b
+start_forward gitops-demo service-b-stable 8080
 port_b="$PF_PORT"
+start_forward istio-system istio-ingressgateway 80
+port_gateway="$PF_PORT"
+start_forward gitops-demo prometheus 9090
+port_prometheus="$PF_PORT"
 for port in "$port_a" "$port_b"; do
   for endpoint in live ready; do
     curl --fail --silent --show-error --max-time 10 \
@@ -66,11 +78,15 @@ for port in "$port_a" "$port_b"; do
       | python3 -c 'import json,sys; assert json.load(sys.stdin)["status"] == "UP"'
   done
 done
+curl --fail --silent --show-error --max-time 10 \
+  "http://127.0.0.1:$port_b/api/info" \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["service"] == "B" and d["message"]'
 correlation="verify-$(date -u +%Y%m%d%H%M%S)"
 curl --fail --silent --show-error --max-time 10 \
   -D "$tmpdir/headers" -o "$tmpdir/body" \
+  -H 'Host: service-a.demo.local' \
   -H "X-Correlation-ID: $correlation" \
-  "http://127.0.0.1:$port_a/api/aggregate"
+  "http://127.0.0.1:$port_gateway/api/aggregate"
 python3 - "$tmpdir/headers" "$tmpdir/body" "$correlation" <<'PY'
 import json
 import sys
@@ -83,4 +99,8 @@ assert f"x-correlation-id: {expected}" in headers, headers
 assert body["service"] == "A" and body["downstream"]["service"] == "B", body
 print(f"HTTP 200 A → B; correlation ID: {expected}; JSON: {body}")
 PY
-log done 'Health і HTTP-виклик A → B успішні.'
+curl --fail --silent --show-error --max-time 10 --get \
+  --data-urlencode 'query=sum(istio_requests_total{reporter="destination",rollouts_pod_template_hash!=""})' \
+  "http://127.0.0.1:$port_prometheus/api/v1/query" \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"] == "success" and d["data"]["result"] and float(d["data"]["result"][0]["value"][1]) > 0, d'
+log done 'Health, HTTP-виклик A → B і метрики Istio в Prometheus успішні.'

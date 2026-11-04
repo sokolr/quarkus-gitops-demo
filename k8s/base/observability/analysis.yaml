@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: canary-success-rate
+spec:
+  args:
+    - name: canary-hash
+  metrics:
+    - name: http-success-rate
+      initialDelay: 45s
+      interval: 15s
+      count: 3
+      failureLimit: 0
+      successCondition: 'result[0] >= 0.95'
+      failureCondition: 'result[0] < 0.95'
+      provider:
+        prometheus:
+          address: http://prometheus.gitops-demo.svc.cluster.local:9090
+          query: |
+            (
+              sum(increase(istio_requests_total{reporter="destination",rollouts_pod_template_hash="{{args.canary-hash}}",response_code!~"5.."}[1m]))
+              /
+              sum(increase(istio_requests_total{reporter="destination",rollouts_pod_template_hash="{{args.canary-hash}}"}[1m]))
+            ) or vector(0)
