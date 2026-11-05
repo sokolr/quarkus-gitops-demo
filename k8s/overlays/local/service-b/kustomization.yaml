@@ -12,4 +12,4 @@ patches:
       name: service-b
 images:
   - name: gitops-demo/service-b
-    newTag: release-20261105011242-d5bd59c8
+    newTag: release-20261105110528-2b3f2200
