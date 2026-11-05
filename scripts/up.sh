@@ -46,13 +46,14 @@ else
   if k -n gitops-demo get pvc data-postgres-0 >/dev/null 2>&1; then
     die 'PVC PostgreSQL існує без Secret service-b-db; відновіть старі credentials перед запуском.'
   fi
-  log "$step" 'Створюю Secret service-b-db; пароль не записується в Git або лог.'
+  log "$step" 'Створюю Secret service-b-db; credentials не записуються в Git або лог.'
+  db_username="${DB_USERNAME:-service_b_$(openssl rand -hex 8)}"
   if [[ -n "${DB_PASSWORD:-}" ]]; then
     printf %s "$DB_PASSWORD" | k -n gitops-demo create secret generic service-b-db \
-      --from-literal=username=service_b --from-file=password=/dev/stdin
+      --from-literal="username=$db_username" --from-file=password=/dev/stdin
   else
     openssl rand -hex 32 | tr -d '\n' | k -n gitops-demo create secret generic service-b-db \
-      --from-literal=username=service_b --from-file=password=/dev/stdin
+      --from-literal="username=$db_username" --from-file=password=/dev/stdin
   fi
 fi
 

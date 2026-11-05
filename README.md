@@ -41,7 +41,7 @@ curl -s http://localhost:8081/api/info
 
 ## Task 2, етап 2: сумісна міграція V2
 
-Файл `V2__add_service_description.sql` додає nullable-колонку
+Файл `X2__add_service_description.sql` додає nullable-колонку
 `description VARCHAR(500)`. Він не змінює й не видаляє `message`. V2 Service B
 повертає `description` у `GET /api/info`, коли її встановлено. Для запису:
 
@@ -88,15 +88,46 @@ ArgoCD керує PostgreSQL StatefulSet, PVC та двома Rollout. PostgreSQ
 Перезапуск Pod PostgreSQL чи Service B не видаляє PVC. `make down` видаляє весь
 профіль Minikube разом із даними — це повне прибирання середовища.
 
-Пароль БД генерується випадково під час першого `make up`; команда створює
+Ім'я користувача й пароль БД генеруються під час першого `make up`; команда створює
 Kubernetes Secret `service-b-db` із ключами `username` і `password` у namespace
 `gitops-demo`. Повторний `make up` використовує наявний Secret. Якщо PVC вже є,
 а Secret втрачено, bootstrap зупиняється, щоб не створити пароль, який не
-відповідає існуючій БД. Пароль не додається в Git і не друкується в лог.
+відповідає існуючій БД. За потреби значення можна подати через `DB_USERNAME`
+і `DB_PASSWORD` у середовищі до першого запуску. Credentials не додаються в
+Git і не друкуються в лог.
 Kubernetes Secret — сховище всередині кластера, не зовнішній Vault; значення
 Secret за замовчуванням не шифруються в etcd. Для цього локального прикладу
 обрано дозволений задачею bootstrap Secret; для production потрібне окреме
 керування ключами та шифрування Secret.
+
+Пул Service B обмежено 5 з'єднаннями на Pod (`quarkus.datasource.jdbc.max-size=5`).
+З Istio traffic routing stable ReplicaSet зберігає 2 Pod, а canary може мати
+ще 2 Pod. Отже під час одного rollout верхня межа для застосунку —
+**4 × 5 = 20 з'єднань**. `maxSurge: 1` тут не обмежує сумарну кількість Pod:
+Argo Rollouts не використовує його для розрахунку stable/canary replicas із
+traffic routing. При швидких послідовних rollout старі ReplicaSet можуть
+тимчасово лишатися запущеними, тому перед новим rollout перевіряйте фактичні
+Pod і залишайте додатковий резерв. PostgreSQL 18 зазвичай має
+`max_connections=100`, але фактичне значення залежить від ініціалізації
+кластера. Перевірте його командою нижче; 20 не включає адміністративні й
+інші клієнтські з'єднання:
+
+```sh
+kubectl --context gitops-demo -n gitops-demo exec postgres-0 -- sh -ec \
+  'PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SHOW max_connections"'
+```
+
+Для перевірки збереження даних запишіть у B новий `message` через REST,
+перезапустіть Pod B, потім Pod PostgreSQL і прочитайте повідомлення знову.
+PVC `data-postgres-0` має залишитися `Bound` після обох перезапусків.
+
+Для демонстрації недоступності БД змініть `spec.replicas` PostgreSQL StatefulSet
+з `1` на `0` у Git, зробіть commit/push і дочекайтеся синхронізації ArgoCD.
+Тоді readiness B стане `DOWN`; readiness A залишиться `UP`, але
+`GET /api/aggregate` поверне `502` з `SERVICE_B_UNAVAILABLE`. Поверніть
+`replicas: 1` окремим commit/push і перевірте відновлення через `make verify`.
+Безпосередній `kubectl scale` тут ненадійний для демонстрації, бо ArgoCD із
+`selfHeal` поверне бажане значення з Git. Зміна кількості Pod не видаляє PVC.
 
 ```sh
 make up
@@ -106,12 +137,13 @@ kubectl --context gitops-demo -n gitops-demo get rollouts service-a service-b
 kubectl --context gitops-demo -n gitops-demo get virtualservice service-a service-b
 ```
 
-Обидва Rollout мають 2 базові репліки та canary-кроки 10%, 50%, 100% із
-автоматичним аналізом після 10% і 50%. Argo Rollouts змінює ваги в Istio VirtualService; stable
-та canary Service вибирають відповідні ReplicaSet. `service-b` спрямовує
+Обидва Rollout мають 2 базові репліки та canary-кроки 10%, 25%, 50%, 100% із
+автоматичним аналізом після 10%, 25% і 50%. Argo Rollouts змінює ваги в Istio
+VirtualService; stable та canary Service вибирають відповідні ReplicaSet.
+`service-b` спрямовує
 запити A → B через sidecar, `service-a.demo.local` — вхідні запити через
 Istio ingress gateway. Ваги задають імовірність маршрутизації кожного запиту,
-тому маленька вибірка не обов'язково дасть рівно 10/50%. Прямий port-forward
+тому маленька вибірка не обов'язково дасть рівно 10/25/50%. Прямий port-forward
 до Service або Pod обходить Istio та не перевіряє canary-ваги.
 
 ```sh
@@ -119,6 +151,19 @@ kubectl --context gitops-demo -n istio-system port-forward service/istio-ingress
 # в іншому терміналі
 curl -H 'Host: service-a.demo.local' http://127.0.0.1:18080/api/aggregate
 ```
+
+Щоб побачити поточні ваги A → B, повторюйте під час rollout:
+
+```sh
+kubectl --context gitops-demo -n gitops-demo get virtualservice/service-b \
+  -o jsonpath='{range .spec.http[0].route[*]}{.destination.host}={.weight}%{" "}{end}{"\n"}'
+kubectl --context gitops-demo -n gitops-demo get analysisruns
+```
+
+Очікувані ваги stable/canary: `90/10` → `75/25` → `50/50` → `100/0`.
+Наприкінці stable Service вже вказує на **новий** ReplicaSet. Початкове
+створення Rollout не проходить canary-кроки: вони спрацьовують при наступній
+зміні шаблону Pod, наприклад тега образу або `DEMO_FAULT_PERCENT`.
 
 ArgoCD ігнорує поля ваг VirtualService та hash-селектор stable/canary Service,
 якими керує Rollouts; це запобігає конфлікту між reconciler-ами. Під час
@@ -136,13 +181,17 @@ ArgoCD Application `observability` встановлює локальний Prome
 запитів/с до A через mesh; A викликає B. Він потрібен, щоб canary мав дані
 навіть без ручних запитів. Це навантаження лише для демонстрації.
 
-Після встановлення 10% і 50% Argo Rollouts запускає окремий AnalysisRun. Він
+Після встановлення 10%, 25% і 50% Argo Rollouts запускає окремий AnalysisRun. Він
 чекає 45 секунд на накопичення метрик і тричі з інтервалом 15 секунд вимірює
 частку HTTP-відповідей без 5xx **саме Pod нового ReplicaSet** за останню хвилину.
 Усі три виміри мають бути не нижче 95%. Будь-який вимір нижче 95%, включно
 з відсутністю запитів, провалює аналіз і автоматично повертає 100% трафіку
 на stable. Під час недоступності Prometheus аналіз не може підтвердити успіх;
 перевіряйте AnalysisRun замість примусового promotion.
+
+Кожен успішний аналіз займає приблизно 75–90 секунд; три аналізи — близько
+4 хвилин плюс запуск Pod та синхронізація ArgoCD. Саме оновлення ваги Istio
+після завершення кроку зазвичай займає секунди.
 
 ```sh
 kubectl --context gitops-demo -n gitops-demo get deployment/prometheus deployment/canary-traffic analysistemplate/canary-success-rate

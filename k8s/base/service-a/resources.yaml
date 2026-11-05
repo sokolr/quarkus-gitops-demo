@@ -28,6 +28,14 @@ spec:
               - name: canary-hash
                 valueFrom:
                   podTemplateHashValue: Latest
+        - setWeight: 25
+        - analysis:
+            templates:
+              - templateName: canary-success-rate
+            args:
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
         - setWeight: 50
         - analysis:
             templates:

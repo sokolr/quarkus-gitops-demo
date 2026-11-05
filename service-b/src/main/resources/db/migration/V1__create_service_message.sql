@@ -1,6 +1,6 @@
 CREATE TABLE service_message (
     id INTEGER PRIMARY KEY CHECK (id = 1),
-    message VARCHAR(500) NOT NULL
+    message VARCHAR(255) NOT NULL
 );
 
 INSERT INTO service_message (id, message)

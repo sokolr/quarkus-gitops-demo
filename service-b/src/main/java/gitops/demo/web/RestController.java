@@ -41,23 +41,23 @@ public class RestController {
     @Consumes(MediaType.APPLICATION_JSON)
     public InfoResponse updateMessage(MessageRequest request) {
         if (request == null || request.message() == null || request.message().isBlank()
-                || request.message().length() > 500) {
-            throw new WebApplicationException("message must contain 1 to 500 characters", 400);
+                || request.message().length() > 255) {
+            throw new WebApplicationException("message must contain 1 to 255 characters", 400);
         }
         return response(messages.updateMessage(request.message()));
     }
-
-    @PUT
-    @Path("/description")
-    @Consumes(MediaType.APPLICATION_JSON)
-    public InfoResponse updateDescription(DescriptionRequest request) {
-        if (request == null || request.description() == null || request.description().isBlank()
-                || request.description().length() > 500) {
-            throw new WebApplicationException("description must contain 1 to 500 characters", 400);
-        }
-        return response(messages.updateDescription(request.description()));
-    }
-
+//
+//    @PUT
+//    @Path("/description")
+//    @Consumes(MediaType.APPLICATION_JSON)
+//    public InfoResponse updateDescription(DescriptionRequest request) {
+//        if (request == null || request.description() == null || request.description().isBlank()
+//                || request.description().length() > 255) {
+//            throw new WebApplicationException("description must contain 1 to 255 characters", 400);
+//        }
+//        return response(messages.updateDescription(request.description()));
+//    }
+//
     private InfoResponse response(StoredInfo info) {
         return new InfoResponse("B", info.message(), info.description());
     }

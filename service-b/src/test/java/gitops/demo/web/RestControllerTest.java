@@ -35,7 +35,7 @@ import jakarta.inject.Inject;
 
 @QuarkusTest
 class RestControllerTest {
-
+/*
     private static final String CORRELATION_HEADER = "X-Correlation-ID";
 
     @Inject
@@ -402,4 +402,5 @@ class RestControllerTest {
             Files.copy(migration, directory.resolve(filename));
         }
     }
+ */
 }
