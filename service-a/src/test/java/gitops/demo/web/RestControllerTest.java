@@ -3,6 +3,8 @@ package gitops.demo.web;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
@@ -74,7 +76,8 @@ class RestControllerTest {
                 .header("X-Correlation-ID", "demo-123")
                 .body("service", equalTo("A"))
                 .body("downstream.service", equalTo("B"))
-                .body("downstream.message", equalTo("Hello from Service B"));
+                .body("downstream.message", equalTo("Hello from Service B"))
+                .body("downstream.description", equalTo("Added in V2"));
 
         WireMockResource.server.verify(getRequestedFor(urlEqualTo("/api/info"))
                 .withHeader("X-Correlation-ID", com.github.tomakehurst.wiremock.client.WireMock.equalTo("demo-123")));
@@ -93,6 +96,47 @@ class RestControllerTest {
         assertEquals(id, UUID.fromString(id).toString());
         WireMockResource.server.verify(getRequestedFor(urlEqualTo("/api/info"))
                 .withHeader("X-Correlation-ID", com.github.tomakehurst.wiremock.client.WireMock.equalTo(id)));
+    }
+
+    @Test
+    void returnsNoContentWhenServiceBHasNoRecord() {
+        WireMockResource.server.stubFor(get(urlEqualTo("/api/info"))
+                .willReturn(aResponse().withStatus(204)));
+
+        var response = given().when().get("/api/aggregate");
+        response.then().statusCode(204);
+        assertEquals("", response.asString());
+    }
+
+    @Test
+    void createsRecordThroughServiceBAndPropagatesCorrelationId() {
+        WireMockResource.server.stubFor(post(urlEqualTo("/api/info"))
+                .willReturn(aResponse().withStatus(201)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"service\":\"B\",\"message\":\"Created\","
+                                + "\"description\":\"Via POST\"}")));
+
+        given().contentType(ContentType.JSON)
+                .header("X-Correlation-ID", "create-123")
+                .body("{\"message\":\"Created\",\"description\":\"Via POST\"}")
+                .when().post("/api/aggregate")
+                .then().statusCode(201)
+                .header("X-Correlation-ID", "create-123")
+                .body("service", equalTo("A"))
+                .body("downstream.message", equalTo("Created"))
+                .body("downstream.description", equalTo("Via POST"));
+
+        WireMockResource.server.verify(postRequestedFor(urlEqualTo("/api/info"))
+                .withHeader("X-Correlation-ID", com.github.tomakehurst.wiremock.client.WireMock.equalTo("create-123"))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.message",
+                        com.github.tomakehurst.wiremock.client.WireMock.equalTo("Created"))));
+    }
+
+    @Test
+    void rejectsInvalidCreateBeforeCallingServiceB() {
+        given().contentType(ContentType.JSON).body("{\"message\":\" \"}")
+                .post("/api/aggregate").then().statusCode(400);
+        WireMockResource.server.verify(0, postRequestedFor(urlEqualTo("/api/info")));
     }
 
     @Test

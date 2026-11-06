@@ -6,11 +6,18 @@
 
 ## Task 2, етап 1: дані та API
 
-Service B тепер зберігає повідомлення в PostgreSQL. `GET /api/info` зберігає
-поля `{ "service": "B", "message": "..." }`, але читає `message` з БД. Service A
-тому не потребує змін. `PUT /api/info/message` з JSON
+Service B зберігає повідомлення в PostgreSQL. `GET /api/info` повертає
+`{ "service": "B", "message": "..." }`, читаючи `message` з БД. Якщо таблиця
+порожня, B повертає `204 No Content`; `GET /api/aggregate` у Service A теж
+повертає `204` без тіла. Якщо записів кілька, GET і PUT працюють з останнім
+створеним (найбільший `id`). `POST /api/aggregate` приймає JSON з обов'язковим
+`message` і необов'язковим `description`, викликає `POST /api/info` у B та
+створює наступний запис у PostgreSQL. Обидва POST повертають `201` після
+створення і `400` для невалідних даних. Міграція V3 додає послідовність для
+`id` і знімає обмеження одного запису. Початковий рядок з V1 зберігається.
+`PUT /api/info/message` з JSON
 `{ "message": "Новий текст" }` замінює повідомлення й повертає оновлений
-`InfoResponse`. Порожнє повідомлення або текст довший за 500 символів дає
+`InfoResponse`. Порожнє повідомлення або текст довший за 255 символів дає
 HTTP `400`.
 
 ```sh
@@ -24,6 +31,15 @@ curl -s -X PUT http://localhost:8081/api/info/message \
   -H 'Content-Type: application/json' \
   -d '{"message":"Збережено в PostgreSQL"}'
 curl -s http://localhost:8081/api/info
+```
+
+Щоб перевірити створення через A:
+
+```sh
+curl -i -X POST http://localhost:8080/api/aggregate \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Створено через A","description":"Новий запис"}'
+curl -i http://localhost:8080/api/aggregate
 ```
 
 Для тестів і dev-режиму потрібен запущений Docker: Quarkus Dev Services
@@ -41,8 +57,8 @@ curl -s http://localhost:8081/api/info
 
 ## Task 2, етап 2: сумісна міграція V2
 
-Файл `X2__add_service_description.sql` додає nullable-колонку
-`description VARCHAR(500)`. Він не змінює й не видаляє `message`. V2 Service B
+Файл `V2__add_service_description.sql` додає nullable-колонку
+`description VARCHAR(255)`. Він не змінює й не видаляє `message`. V2 Service B
 повертає `description` у `GET /api/info`, коли її встановлено. Для запису:
 
 ```sh
@@ -53,8 +69,9 @@ curl -s http://localhost:8081/api/info
 ```
 
 `description` може залишатися `NULL` для старих рядків; API приймає непорожній
-текст до 500 символів. Коли значення `NULL`, поле не включається до JSON, тому
-відповідь має попередню форму. Service A ігнорує додаткове поле у відповіді B.
+текст до 255 символів. Коли значення `NULL`, поле не включається до JSON, тому
+відповідь має попередню форму. Service A передає `description` у своїй відповіді,
+коли поле присутнє у відповіді B.
 
 Послідовність релізу: спочатку працює образ B V1 із міграцією V1; потім перший
 Pod B V2 застосовує V2 до спільної БД і починає canary. Поки V1 і V2 працюють
