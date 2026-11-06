@@ -3,13 +3,16 @@ package gitops.demo.web;
 import gitops.demo.client.ServiceBClient;
 import gitops.demo.dto.AggregateResponse;
 import gitops.demo.dto.CreateInfoRequest;
+import gitops.demo.dto.DescriptionRequest;
 import gitops.demo.dto.ErrorResponse;
 import gitops.demo.dto.InfoResponse;
+import gitops.demo.dto.MessageRequest;
 import jakarta.ws.rs.Consumes;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.ProcessingException;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
@@ -32,13 +35,7 @@ public class RestController {
 
     @GET
     public Response aggregate() {
-        return callServiceB(() -> {
-            InfoResponse downstream = serviceB.info(correlationId.getId());
-            return downstream == null
-                    ? Response.noContent().build()
-                    : Response.ok(new AggregateResponse("A", downstream))
-                            .type(MediaType.APPLICATION_JSON).build();
-        });
+        return callServiceB(() -> aggregateResponse(serviceB.info(correlationId.getId())));
     }
 
     @POST
@@ -53,6 +50,35 @@ public class RestController {
         return callServiceB(() -> Response.status(Response.Status.CREATED)
                 .entity(new AggregateResponse("A", serviceB.create(correlationId.getId(), request)))
                 .type(MediaType.APPLICATION_JSON).build());
+    }
+
+    @PUT
+    @Path("/message")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response updateMessage(MessageRequest request) {
+        if (request == null || request.message() == null || request.message().isBlank()
+                || request.message().length() > 255) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+        return callServiceB(() -> aggregateResponse(serviceB.updateMessage(correlationId.getId(), request)));
+    }
+
+    @PUT
+    @Path("/description")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response updateDescription(DescriptionRequest request) {
+        if (request == null || request.description() == null || request.description().isBlank()
+                || request.description().length() > 255) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+        return callServiceB(() -> aggregateResponse(serviceB.updateDescription(correlationId.getId(), request)));
+    }
+
+    private Response aggregateResponse(InfoResponse downstream) {
+        return downstream == null
+                ? Response.noContent().build()
+                : Response.ok(new AggregateResponse("A", downstream))
+                        .type(MediaType.APPLICATION_JSON).build();
     }
 
     private Response callServiceB(Supplier<Response> call) {

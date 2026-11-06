@@ -41,6 +41,14 @@ class CreateInfoTest {
                     .body("message", equalTo("Created"))
                     .body("description", equalTo("Via POST"));
 
+            given().contentType(ContentType.JSON).body("{\"message\":\"Updated\"}")
+                    .put("/api/info/message").then().statusCode(200)
+                    .body("message", equalTo("Updated"));
+            given().contentType(ContentType.JSON).body("{\"description\":\"Updated details\"}")
+                    .put("/api/info/description").then().statusCode(200)
+                    .body("message", equalTo("Updated"))
+                    .body("description", equalTo("Updated details"));
+
             try (var connection = dataSource.getConnection();
                     var statement = connection.createStatement();
                     var rows = statement.executeQuery("SELECT id, message, description FROM service_message ORDER BY id")) {
@@ -49,12 +57,12 @@ class CreateInfoTest {
                 assertEquals(originalMessage, rows.getString(2));
                 assertTrue(rows.next());
                 assertTrue(rows.getInt(1) > 1);
-                assertEquals("Created", rows.getString(2));
-                assertEquals("Via POST", rows.getString(3));
+                assertEquals("Updated", rows.getString(2));
+                assertEquals("Updated details", rows.getString(3));
                 assertFalse(rows.next());
             }
             given().get("/api/info").then().statusCode(200)
-                    .body("message", equalTo("Created"));
+                    .body("message", equalTo("Updated"));
 
             try (var connection = dataSource.getConnection();
                     var statement = connection.createStatement()) {
@@ -66,6 +74,8 @@ class CreateInfoTest {
             assertEquals("", emptyResponse.asString());
             given().contentType(ContentType.JSON).body("{\"message\":\"Nothing to update\"}")
                     .put("/api/info/message").then().statusCode(204);
+            given().contentType(ContentType.JSON).body("{\"description\":\"Nothing to update\"}")
+                    .put("/api/info/description").then().statusCode(204);
 
             given().contentType(ContentType.JSON)
                     .body("{\"message\":\"After empty\"}")

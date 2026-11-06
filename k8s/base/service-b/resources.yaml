@@ -3,7 +3,7 @@ kind: Rollout
 metadata:
   name: service-b
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: service-b

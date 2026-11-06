@@ -20,6 +20,12 @@ Service B зберігає повідомлення в PostgreSQL. `GET /api/inf
 `InfoResponse`. Порожнє повідомлення або текст довший за 255 символів дає
 HTTP `400`.
 
+Service A також приймає `PUT /api/aggregate/message` і
+`PUT /api/aggregate/description` з відповідними JSON-полями. Він передає
+оновлення до B, повертає агреговану відповідь з оновленими даними або
+`204 No Content`, якщо таблиця порожня. Порожні значення та значення довші
+за 255 символів отримують `400`.
+
 ```sh
 cd service-b
 mvn test
@@ -39,6 +45,12 @@ curl -s http://localhost:8081/api/info
 curl -i -X POST http://localhost:8080/api/aggregate \
   -H 'Content-Type: application/json' \
   -d '{"message":"Створено через A","description":"Новий запис"}'
+curl -i -X PUT http://localhost:8080/api/aggregate/message \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Оновлено через A"}'
+curl -i -X PUT http://localhost:8080/api/aggregate/description \
+  -H 'Content-Type: application/json' \
+  -d '{"description":"Оновлений опис"}'
 curl -i http://localhost:8080/api/aggregate
 ```
 

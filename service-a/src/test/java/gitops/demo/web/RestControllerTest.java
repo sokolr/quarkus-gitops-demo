@@ -5,6 +5,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.put;
+import static com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
@@ -137,6 +139,64 @@ class RestControllerTest {
         given().contentType(ContentType.JSON).body("{\"message\":\" \"}")
                 .post("/api/aggregate").then().statusCode(400);
         WireMockResource.server.verify(0, postRequestedFor(urlEqualTo("/api/info")));
+    }
+
+    @Test
+    void updatesMessageAndDescriptionThroughServiceB() {
+        WireMockResource.server.stubFor(put(urlEqualTo("/api/info/message"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"service\":\"B\",\"message\":\"Updated\"}")));
+        WireMockResource.server.stubFor(put(urlEqualTo("/api/info/description"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"service\":\"B\",\"message\":\"Updated\","
+                                + "\"description\":\"New details\"}")));
+
+        given().contentType(ContentType.JSON).header("X-Correlation-ID", "update-123")
+                .body("{\"message\":\"Updated\"}")
+                .put("/api/aggregate/message").then().statusCode(200)
+                .header("X-Correlation-ID", "update-123")
+                .body("service", equalTo("A"))
+                .body("downstream.message", equalTo("Updated"));
+        given().contentType(ContentType.JSON).header("X-Correlation-ID", "update-123")
+                .body("{\"description\":\"New details\"}")
+                .put("/api/aggregate/description").then().statusCode(200)
+                .header("X-Correlation-ID", "update-123")
+                .body("downstream.description", equalTo("New details"));
+
+        WireMockResource.server.verify(putRequestedFor(urlEqualTo("/api/info/message"))
+                .withHeader("X-Correlation-ID", com.github.tomakehurst.wiremock.client.WireMock.equalTo("update-123"))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.message",
+                        com.github.tomakehurst.wiremock.client.WireMock.equalTo("Updated"))));
+        WireMockResource.server.verify(putRequestedFor(urlEqualTo("/api/info/description"))
+                .withHeader("X-Correlation-ID", com.github.tomakehurst.wiremock.client.WireMock.equalTo("update-123"))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.description",
+                        com.github.tomakehurst.wiremock.client.WireMock.equalTo("New details"))));
+    }
+
+    @Test
+    void emptyUpdateResponseAndInvalidInputs() {
+        WireMockResource.server.stubFor(put(urlEqualTo("/api/info/message"))
+                .willReturn(aResponse().withStatus(204)));
+        WireMockResource.server.stubFor(put(urlEqualTo("/api/info/description"))
+                .willReturn(aResponse().withStatus(204)));
+
+        var messageResponse = given().contentType(ContentType.JSON)
+                .body("{\"message\":\"Valid\"}").put("/api/aggregate/message");
+        messageResponse.then().statusCode(204);
+        assertEquals("", messageResponse.asString());
+        var descriptionResponse = given().contentType(ContentType.JSON)
+                .body("{\"description\":\"Valid\"}").put("/api/aggregate/description");
+        descriptionResponse.then().statusCode(204);
+        assertEquals("", descriptionResponse.asString());
+
+        given().contentType(ContentType.JSON).body("{\"message\":\" \"}")
+                .put("/api/aggregate/message").then().statusCode(400);
+        given().contentType(ContentType.JSON).body("{\"description\":\" \"}")
+                .put("/api/aggregate/description").then().statusCode(400);
+        WireMockResource.server.verify(1, putRequestedFor(urlEqualTo("/api/info/message")));
+        WireMockResource.server.verify(1, putRequestedFor(urlEqualTo("/api/info/description")));
     }
 
     @Test
