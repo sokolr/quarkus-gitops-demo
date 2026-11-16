@@ -1,20 +1,25 @@
-apiVersion: argoproj.io/v1alpha1
-kind: Rollout
-metadata:
-  name: service-b
-spec:
-  template:
-    spec:
-      containers:
-        - name: service-b
-          env:
-            - name: AWS_REGION
-              value: us-east-1
-            - name: SNS_ENDPOINT
-              value: http://ministack:4566
-            - name: SNS_TOPIC_ARN
-              value: arn:aws:sns:us-east-1:000000000000:service-b-events
-            - name: AWS_ACCESS_KEY_ID
-              value: test
-            - name: AWS_SECRET_ACCESS_KEY
-              value: test
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: AWS_REGION
+    value: us-east-1
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: SNS_ENDPOINT
+    value: http://ministack:4566
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: SNS_TOPIC_ARN
+    value: arn:aws:sns:us-east-1:000000000000:service-b-events
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: AWS_ACCESS_KEY_ID
+    value: test
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: AWS_SECRET_ACCESS_KEY
+    value: test
