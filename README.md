@@ -1,5 +1,26 @@
 # Quarkus GitOps demo
 
+## Task 3, крок 3: SQS consumer у Service A
+
+Service A через AWS SDK v2 опитує чергу `service-a-events` і перевіряє raw JSON
+події v1 (`eventId`, `aggregateId`, `eventType`, `schemaVersion`, `message`,
+необов'язковий `description`). Після успішної перевірки видаляє повідомлення
+за його поточним SQS receipt handle. Якщо JSON хибний, формат невідомий або
+видалення не вдалося, повідомлення лишається для повторного отримання. Після
+трьох отримань без підтвердження SQS переносить його в
+`service-a-events-dlq`.
+
+Service A не зберігає стану і не виконує бізнес-ефектів для події. Повторна
+доставка проходить ту саму перевірку, тому вона безпечна; це не є доказом
+дедуплікації для майбутніх бізнес-ефектів. Порядок подій не впливає на
+результат перевірки. HTTP-виклики A → B продовжують працювати окремо.
+
+Consumer отримує одне повідомлення за раз з long polling до 2 секунд.
+Обмеження обробки — 10 секунд, SQS API call — 5 секунд, visibility timeout —
+30 секунд. У `local` overlay задані endpoint MiniStack, ім'я черги та фіктивні
+AWS credentials. У режимах `dev` і `test` consumer вимкнений, щоб HTTP-тести
+не залежали від емулятора. Для реального AWS окремий overlay буде додано пізніше.
+
 ## Task 3, крок 2: transactional outbox у Service B
 
 Flyway V4 створює `outbox_event`. Кожен успішний `POST /api/info` і `PUT`
@@ -66,8 +87,7 @@ docker run --rm -e AWS_ENDPOINT_URL=http://host.docker.internal:4566 \
 docker stop gitops-ministack-contract
 ```
 
-На цьому кроці сервіси ще не публікують і не споживають події. Це наступні
-кроки плану. MiniStack зберігає SNS/SQS стан на PVC під час штатного завершення;
+MiniStack зберігає SNS/SQS стан на PVC під час штатного завершення;
 його локальна модель збереження не доводить довговічність справжнього AWS після
 аварійного завершення процесу.
 
