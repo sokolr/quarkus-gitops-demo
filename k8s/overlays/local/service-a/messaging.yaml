@@ -1,0 +1,13 @@
+- op: add
+  path: /spec/template/spec/containers/0/env
+  value:
+    - name: AWS_REGION
+      value: us-east-1
+    - name: SQS_ENDPOINT
+      value: http://ministack:4566
+    - name: SQS_QUEUE_NAME
+      value: service-a-events
+    - name: AWS_ACCESS_KEY_ID
+      value: test
+    - name: AWS_SECRET_ACCESS_KEY
+      value: test
