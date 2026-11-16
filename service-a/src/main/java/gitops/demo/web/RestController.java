@@ -44,7 +44,9 @@ public class RestController {
         if (request == null || request.message() == null || request.message().isBlank()
                 || request.message().length() > 255
                 || (request.description() != null
-                        && (request.description().isBlank() || request.description().length() > 255))) {
+                        && (request.description().isBlank() || request.description().length() > 255))
+                || (request.category() != null
+                        && (request.category().isBlank() || request.category().length() > 32))) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
         return callServiceB(() -> Response.status(Response.Status.CREATED)

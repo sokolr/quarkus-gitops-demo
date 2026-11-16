@@ -120,7 +120,7 @@ class RestControllerTest {
 
         given().contentType(ContentType.JSON)
                 .header("X-Correlation-ID", "create-123")
-                .body("{\"message\":\"Created\",\"description\":\"Via POST\"}")
+                .body("{\"message\":\"Created\",\"description\":\"Via POST\",\"category\":\"news\"}")
                 .when().post("/api/aggregate")
                 .then().statusCode(201)
                 .header("X-Correlation-ID", "create-123")
@@ -131,7 +131,9 @@ class RestControllerTest {
         WireMockResource.server.verify(postRequestedFor(urlEqualTo("/api/info"))
                 .withHeader("X-Correlation-ID", com.github.tomakehurst.wiremock.client.WireMock.equalTo("create-123"))
                 .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.message",
-                        com.github.tomakehurst.wiremock.client.WireMock.equalTo("Created"))));
+                        com.github.tomakehurst.wiremock.client.WireMock.equalTo("Created")))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.category",
+                        com.github.tomakehurst.wiremock.client.WireMock.equalTo("news"))));
     }
 
     @Test

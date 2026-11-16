@@ -39,4 +39,26 @@ class DomainEventValidatorTest {
         assertThrows(IllegalArgumentException.class,
                 () -> DomainEventValidator.validate(body, mapper));
     }
+
+    @Test
+    void acceptsV2AdditiveFieldsAndLegacyV1() throws Exception {
+        String v2 = """
+                {"eventId":"%s","aggregateId":7,"eventType":"InfoCreated",
+                 "schemaVersion":1,"eventVersion":2,"message":"hello","category":"news"}
+                """.formatted(eventId);
+        assertEquals(eventId, DomainEventValidator.validate(v2, mapper));
+        String v1 = v2.replace("\"eventVersion\":2,", "")
+                .replace(",\"category\":\"news\"", "");
+        assertEquals(eventId, DomainEventValidator.validate(v1, mapper));
+    }
+
+    @Test
+    void rejectsIncompleteV2Event() {
+        String missingCategory = """
+                {"eventId":"%s","aggregateId":7,"eventType":"InfoCreated",
+                 "schemaVersion":1,"eventVersion":2,"message":"hello"}
+                """.formatted(eventId);
+        assertThrows(IllegalArgumentException.class,
+                () -> DomainEventValidator.validate(missingCategory, mapper));
+    }
 }

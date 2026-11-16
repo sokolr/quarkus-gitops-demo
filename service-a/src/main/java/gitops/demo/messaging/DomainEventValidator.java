@@ -44,6 +44,16 @@ final class DomainEventValidator {
                 throw new IllegalArgumentException("Invalid description");
             }
         }
+        JsonNode eventVersion = event.path("eventVersion");
+        if (!eventVersion.isMissingNode()) {
+            if (!eventVersion.isIntegralNumber() || eventVersion.asInt() != 2) {
+                throw new IllegalArgumentException("Unsupported eventVersion");
+            }
+            String category = requiredText(event, "category");
+            if (category.length() > 32) {
+                throw new IllegalArgumentException("Invalid category");
+            }
+        }
         return eventId;
     }
 
