@@ -21,7 +21,10 @@ service = sys.argv[1]
 lines = subprocess.check_output(
     ["git", "status", "--porcelain=v1", "--untracked-files=all"], text=True
 ).splitlines()
-invalid = [line[3:] for line in lines if not line[3:].startswith(service + "/")]
+allowed_overlay = "k8s/overlays/local/" + service + "/"
+invalid = [line[3:] for line in lines
+           if not (line[3:].startswith(service + "/")
+                   or line[3:].startswith(allowed_overlay))]
 if invalid:
     raise SystemExit("Сторонні або overlay-зміни перед релізом: " + ", ".join(invalid))
 PY

@@ -1,5 +1,36 @@
 # Quarkus GitOps demo
 
+## Task 3, крок 2: transactional outbox у Service B
+
+Flyway V4 створює `outbox_event`. Кожен успішний `POST /api/info` і `PUT`
+оновлення B записує доменну подію разом зі зміною `service_message` в одній
+транзакції PostgreSQL. Якщо outbox insert не вдається, бізнес-зміна теж
+відкочується. Запит, який повернув `204` без оновленого рядка, події не створює.
+
+Фоновий publisher Service B через AWS SDK v2 читає до 20 непереданих подій за
+цикл, блокує рядки `FOR UPDATE SKIP LOCKED`, публікує їх у SNS і лише після
+успішної відповіді ставить `published_at`. Помилки залишають події для повтору.
+Вікно між успішною SNS-публікацією та commit `published_at` допускає повторну
+публікацію, тому доставка є **at-least-once**. Подія v1 містить `eventId`,
+`aggregateId`, `eventType`, `schemaVersion`, `message` і необов’язковий
+`description`. Вона надходить до SQS як raw JSON.
+
+У `local` overlay B задані `SNS_ENDPOINT`, `SNS_TOPIC_ARN`, регіон та фіктивні
+AWS credentials. Без endpoint override SDK звертатиметься до справжнього AWS;
+окремий `aws` overlay буде додано на наступному етапі конфігурації. У режимах
+`test` і `dev` фонову публікацію вимкнено за замовчуванням, щоб їх можна було
+запускати без емулятора; записи все одно потрапляють до outbox. У production
+публікацію ввімкнено. Для діагностики черги повторів:
+
+```sql
+SELECT event_id, aggregate_id, created_at
+FROM outbox_event WHERE published_at IS NULL ORDER BY created_at;
+```
+
+Поточний образ B, що передував V4, ще не створює outbox-записів. Під час
+перехідного rollout старий Pod може прийняти write-запит без події; перед
+остаточним walkthrough AC7/AC18 треба забезпечити покриття і цього вікна.
+
 ## Task 3, крок 1: локальні SNS/SQS
 
 ArgoCD Application `messaging` розгортає MiniStack `1.5.39` у namespace
