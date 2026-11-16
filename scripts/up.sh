@@ -160,6 +160,21 @@ done
   || die "Observability Application не готова: $observability_state"
 k -n gitops-demo rollout status deployment/prometheus --timeout=180s
 
+step=messaging
+log "$step" 'Синхронізую MiniStack та перевіряю контракт SNS/SQS до запуску сервісів.'
+k apply -f argocd/apps/messaging.yaml
+messaging_deadline=$((SECONDS + 600))
+messaging_state=''
+while (( SECONDS < messaging_deadline )); do
+  messaging_state="$(application_state messaging)"
+  [[ "$messaging_state" == "Synced Healthy $revision" ]] && break
+  sleep 5
+done
+[[ "$messaging_state" == "Synced Healthy $revision" ]] \
+  || die "Messaging Application не готова: $messaging_state; перевірте Job messaging-provision."
+k -n gitops-demo rollout status statefulset/ministack --timeout=180s
+k -n gitops-demo wait --for=condition=Complete job/messaging-provision --timeout=180s
+
 step=root_application
 log "$step" 'Створюю root Application; PostgreSQL і сервіси синхронізує ArgoCD.'
 k apply -f argocd/bootstrap/root-application.yaml
@@ -168,4 +183,4 @@ step=sync
 log "$step" "Чекаю Synced/Healthy для revision $revision."
 wait_for_applications "$revision"
 k -n gitops-demo rollout status statefulset/postgres --timeout=180s
-log done "PostgreSQL, Prometheus і обидва Rollout готові в профілі $PROFILE. Виконайте make verify."
+log done "PostgreSQL, MiniStack, Prometheus і обидва Rollout готові в профілі $PROFILE. Виконайте make verify."

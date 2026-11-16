@@ -4,5 +4,6 @@ namespace: gitops-demo
 resources:
   - postgres
   - observability
+  - messaging
   - service-a
   - service-b

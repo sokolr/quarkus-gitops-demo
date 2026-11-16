@@ -3,5 +3,6 @@ kind: Kustomization
 resources:
   - postgres.yaml
   - observability.yaml
+  - messaging.yaml
   - service-a.yaml
   - service-b.yaml

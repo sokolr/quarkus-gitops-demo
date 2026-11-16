@@ -13,9 +13,9 @@ expected_revision="$(git rev-parse origin/main)"
   || die 'Локальний HEAD відрізняється від origin/main.'
 
 log verify 'ArgoCD Applications:'
-k -n argocd get applications gitops-demo-root postgres observability service-a service-b \
+k -n argocd get applications gitops-demo-root postgres observability messaging service-a service-b \
   -o custom-columns='NAME:.metadata.name,REVISION:.status.sync.revision,SYNC:.status.sync.status,HEALTH:.status.health.status'
-for app in gitops-demo-root postgres observability service-a service-b; do
+for app in gitops-demo-root postgres observability messaging service-a service-b; do
   state="$(application_state "$app")"
   [[ "$state" == "Synced Healthy $expected_revision" ]] \
     || die "$app має стан: $state; очікувався Synced Healthy $expected_revision"
@@ -24,6 +24,10 @@ log verify 'PostgreSQL, PVC, Secret і Rollout:'
 k -n gitops-demo get statefulset/postgres pvc/data-postgres-0 secret/service-b-db
 k -n gitops-demo rollout status statefulset/postgres --timeout=120s
 k -n gitops-demo wait --for=jsonpath='{.status.phase}'=Bound pvc/data-postgres-0 --timeout=120s
+log verify 'MiniStack і declarative SNS/SQS provisioning:'
+k -n gitops-demo rollout status statefulset/ministack --timeout=120s
+k -n gitops-demo wait --for=condition=Complete job/messaging-provision --timeout=120s
+k -n gitops-demo get statefulset/ministack pvc/data-ministack-0 job/messaging-provision
 k -n gitops-demo get rollouts service-a service-b \
   -o custom-columns='NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image,PHASE:.status.phase,READY:.status.readyReplicas,DESIRED:.spec.replicas'
 k -n gitops-demo wait --for=jsonpath='{.status.phase}'=Healthy rollout/service-a --timeout=120s

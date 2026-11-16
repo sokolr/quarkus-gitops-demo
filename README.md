@@ -1,5 +1,45 @@
 # Quarkus GitOps demo
 
+## Task 3, крок 1: локальні SNS/SQS
+
+ArgoCD Application `messaging` розгортає MiniStack `1.5.39` у namespace
+`gitops-demo`. Він використовує лише SNS і SQS, порт `4566`, регіон `us-east-1`
+та PVC `data-ministack-0` для стану. PostSync Job `messaging-provision` через
+AWS CLI створює topic `service-b-events`, чергу `service-a-events`, DLQ
+`service-a-events-dlq` і SQS-підписку з `RawMessageDelivery=true`. Основна черга
+має visibility timeout 30 секунд, long polling 2 секунди та redrive після
+трьох отримань без підтвердження. Її policy дозволяє надсилання лише з цього
+topic. Повторний запуск Job оновлює атрибути без створення дубля підписки.
+
+Той самий Job перед завершенням створює тимчасові ресурси й перевіряє фактичну
+доставку SNS → SQS без SNS envelope та перенесення poison message у DLQ.
+Тимчасові ресурси видаляються після перевірки. `make up` чекає, доки Application
+стане `Synced / Healthy`, StatefulSet запуститься, а Job завершиться успішно;
+`make verify` перевіряє ці стани повторно. Логи перевірки:
+
+```sh
+kubectl --context gitops-demo -n gitops-demo logs job/messaging-provision
+```
+
+Для ручного повторення контракту потрібні Docker і мережевий доступ до образів:
+
+```sh
+docker run -d --rm --name gitops-ministack-contract -p 127.0.0.1:4566:4566 \
+  -e SERVICES=sns,sqs -e MINISTACK_HOST=host.docker.internal \
+  ministackorg/ministack:1.5.39
+docker run --rm -e AWS_ENDPOINT_URL=http://host.docker.internal:4566 \
+  -e AWS_DEFAULT_REGION=us-east-1 -e AWS_ACCESS_KEY_ID=test \
+  -e AWS_SECRET_ACCESS_KEY=test -e AWS_PAGER= \
+  -v "$PWD/k8s/base/messaging:/scripts:ro" --entrypoint /bin/sh \
+  amazon/aws-cli:2.31.0 /scripts/provision.sh
+docker stop gitops-ministack-contract
+```
+
+На цьому кроці сервіси ще не публікують і не споживають події. Це наступні
+кроки плану. MiniStack зберігає SNS/SQS стан на PVC під час штатного завершення;
+його локальна модель збереження не доводить довговічність справжнього AWS після
+аварійного завершення процесу.
+
 Навчальний monorepo для двох Quarkus-сервісів. Service A викликає Service B через HTTP,
 обидва мають health endpoints і передають correlation ID. Локальний запуск працює
 без Kubernetes.

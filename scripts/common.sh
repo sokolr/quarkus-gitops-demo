@@ -54,7 +54,7 @@ wait_for_applications() {
   local expected_revision="$1" deadline=$((SECONDS + 600)) app state all_ready
   while (( SECONDS < deadline )); do
     all_ready=true
-    for app in gitops-demo-root postgres observability service-a service-b; do
+    for app in gitops-demo-root postgres observability messaging service-a service-b; do
       state="$(application_state "$app")"
       if [[ "$state" != "Synced Healthy $expected_revision" ]]; then
         all_ready=false
@@ -65,7 +65,7 @@ wait_for_applications() {
     fi
     sleep 5
   done
-  for app in gitops-demo-root postgres observability service-a service-b; do
+  for app in gitops-demo-root postgres observability messaging service-a service-b; do
     printf '%s: %s\n' "$app" "$(application_state "$app")" >&2
   done
   die "ArgoCD не досяг Synced/Healthy на revision $expected_revision за 10 хвилин."

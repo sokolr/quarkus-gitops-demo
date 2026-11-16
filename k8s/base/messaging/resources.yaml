@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ministack
+spec:
+  selector:
+    app: ministack
+  ports:
+    - name: aws
+      port: 4566
+      targetPort: aws
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ministack
+spec:
+  serviceName: ministack
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ministack
+  template:
+    metadata:
+      labels:
+        app: ministack
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      containers:
+        - name: ministack
+          image: ministackorg/ministack:1.5.39
+          ports:
+            - name: aws
+              containerPort: 4566
+          env:
+            - name: SERVICES
+              value: sns,sqs
+            - name: MINISTACK_HOST
+              value: ministack.gitops-demo.svc.cluster.local
+            - name: MINISTACK_REGION
+              value: us-east-1
+            - name: PERSIST_STATE
+              value: "1"
+            - name: STATE_DIR
+              value: /data/state
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /_ministack/ready
+              port: aws
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /_ministack/health
+              port: aws
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 1Gi
