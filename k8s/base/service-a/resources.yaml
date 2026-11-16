@@ -24,7 +24,6 @@ spec:
         - analysis:
             templates:
               - templateName: canary-success-rate
-              - templateName: canary-sqs-health
             args:
               - name: canary-hash
                 valueFrom:
@@ -33,7 +32,6 @@ spec:
         - analysis:
             templates:
               - templateName: canary-success-rate
-              - templateName: canary-sqs-health
             args:
               - name: canary-hash
                 valueFrom:
@@ -42,7 +40,6 @@ spec:
         - analysis:
             templates:
               - templateName: canary-success-rate
-              - templateName: canary-sqs-health
             args:
               - name: canary-hash
                 valueFrom:
