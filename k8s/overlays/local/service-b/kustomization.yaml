@@ -10,6 +10,12 @@ patches:
       version: v1alpha1
       kind: Rollout
       name: service-b
+  - path: messaging.yaml
+    target:
+      group: argoproj.io
+      version: v1alpha1
+      kind: Rollout
+      name: service-b
 images:
   - name: gitops-demo/service-b
-    newTag: release-20261106103948-37c8b161
+    newTag: release-20261116091634-5b1acc76
