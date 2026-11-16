@@ -12,4 +12,4 @@ patches:
       name: service-a
 images:
   - name: gitops-demo/service-a
-    newTag: release-20261116094944-6502b214
+    newTag: release-20261116101841-17ebb184
