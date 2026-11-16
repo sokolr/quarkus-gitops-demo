@@ -2,6 +2,7 @@ package gitops.demo.web;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import org.junit.jupiter.api.Test;
@@ -21,5 +22,13 @@ class HealthTest {
                     .contentType(ContentType.JSON)
                     .body("status", equalTo("UP"));
         }
+    }
+
+    @Test
+    void exposesSqsCanaryMetrics() {
+        given().when().get("/q/metrics")
+                .then().statusCode(200)
+                .body(containsString("demo_sqs_poll_total"))
+                .body(containsString("demo_sqs_message_total"));
     }
 }

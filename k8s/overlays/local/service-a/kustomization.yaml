@@ -10,6 +10,12 @@ patches:
       version: v1alpha1
       kind: Rollout
       name: service-a
+  - path: fault.yaml
+    target:
+      group: argoproj.io
+      version: v1alpha1
+      kind: Rollout
+      name: service-a
 images:
   - name: gitops-demo/service-a
-    newTag: release-20261116101841-17ebb184
+    newTag: release-20261116111436-2f34052c
