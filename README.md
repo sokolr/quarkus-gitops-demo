@@ -1,5 +1,41 @@
 # Quarkus GitOps demo
 
+## Task 3, крок 5: SQS-aware canary для Service A
+
+Service A експортує лічильники `demo_sqs_poll_total` та
+`demo_sqs_message_total` з міткою `result=success|failure` через `/q/metrics`.
+Prometheus збирає їх із application-порту Pod та додає
+`rollouts_pod_template_hash`. У кожному canary-кроці A HTTP-аналіз доповнений
+`canary-sqs-health`: за останню хвилину принаймні 95% опитувань SQS повинні
+завершитися успішно, а частка помилок обробки отриманих повідомлень не може
+перевищити 5%. Порожні метрики опитування провалюють аналіз; відсутність
+повідомлень не рахується помилкою обробки.
+
+Stable і canary Pod A читають **одну SQS чергу** як competing consumers. HTTP
+ваги Istio 10/25/50% не визначають, який Pod отримає наступне повідомлення;
+частка отриманих повідомлень залежить від швидкості опитування та SQS.
+Аналіз використовує тільки метрики Pod нового ReplicaSet за hash, тому
+помилки stable не маскують помилок canary. Опитування відбувається навіть за
+порожньої черги й дає сигнал про доступність SQS. Частка помилок обробки
+оцінюється лише коли canary фактично отримав повідомлення. Якщо подій за
+вікно не було, цей критерій не доводить коректності їхньої обробки.
+
+Для безпечної демонстрації автоматичного abort задайте `"100"` замість
+`"0"` у `k8s/overlays/local/service-a/fault.yaml`, закомітьте та відправте
+зміну в `origin/main`. Новий Pod залишиться HTTP-ready, але кожне SQS
+опитування видаватиме контрольовану помилку. AnalysisRun має перейти у
+`Failed`, Rollout A — в `Degraded`/`Aborted`, HTTP-вага canary повернеться
+до 0. Поверніть `"0"`, закомітьте й відправте знову, щоб відновити Healthy.
+Функцію слід вмикати лише для демонстрації; поточне значення в Git — `0`.
+
+```sh
+kubectl --context gitops-demo -n gitops-demo get analysisruns
+kubectl --context gitops-demo -n gitops-demo get rollout/service-a virtualservice/service-a
+kubectl --context gitops-demo -n argocd get application/service-a
+kubectl --context gitops-demo -n gitops-demo port-forward service/prometheus 9090:9090
+# Prometheus: demo_sqs_poll_total та demo_sqs_message_total
+```
+
 ## Task 3, крок 4: сумісна зміна схеми й події v2
 
 Flyway V5 додає необов'язковий стовпець `category VARCHAR(32)` із default

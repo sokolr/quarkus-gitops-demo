@@ -26,3 +26,20 @@ scrape_configs:
         target_label: pod
       - source_labels: [__meta_kubernetes_pod_label_rollouts_pod_template_hash]
         target_label: rollouts_pod_template_hash
+  - job_name: service-a-sqs
+    metrics_path: /q/metrics
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [gitops-demo]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: service-a
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        action: keep
+        regex: http
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_label_rollouts_pod_template_hash]
+        target_label: rollouts_pod_template_hash

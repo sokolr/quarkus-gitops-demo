@@ -36,7 +36,7 @@ k -n gitops-demo get virtualservice service-a service-b
 log verify 'Prometheus, AnalysisTemplate і генератор трафіку:'
 k -n gitops-demo rollout status deployment/prometheus --timeout=120s
 k -n gitops-demo rollout status deployment/canary-traffic --timeout=120s
-k -n gitops-demo get analysistemplate/canary-success-rate
+k -n gitops-demo get analysistemplate/canary-success-rate analysistemplate/canary-sqs-health
 
 tmpdir="$(mktemp -d)"
 pids=()
@@ -107,4 +107,8 @@ curl --fail --silent --show-error --max-time 10 --get \
   --data-urlencode 'query=sum(istio_requests_total{reporter="destination",rollouts_pod_template_hash!=""})' \
   "http://127.0.0.1:$port_prometheus/api/v1/query" \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"] == "success" and d["data"]["result"] and float(d["data"]["result"][0]["value"][1]) > 0, d'
-log done 'Health, HTTP-виклик A → B і метрики Istio в Prometheus успішні.'
+curl --fail --silent --show-error --max-time 10 --get \
+  --data-urlencode 'query=sum(demo_sqs_poll_total{result="success",rollouts_pod_template_hash!=""})' \
+  "http://127.0.0.1:$port_prometheus/api/v1/query" \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"] == "success" and d["data"]["result"] and float(d["data"]["result"][0]["value"][1]) > 0, d'
+log done 'Health, HTTP-виклик A → B, Istio та SQS метрики в Prometheus успішні.'

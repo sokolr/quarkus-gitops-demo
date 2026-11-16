@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - resources.yaml
   - analysis.yaml
+  - sqs-analysis.yaml
 configMapGenerator:
   - name: prometheus-config
     files:

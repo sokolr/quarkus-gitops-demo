@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: canary-sqs-health
+spec:
+  args:
+    - name: canary-hash
+  metrics:
+    - name: sqs-poll-success-rate
+      initialDelay: 45s
+      interval: 15s
+      count: 3
+      failureLimit: 0
+      successCondition: 'result[0] >= 0.95'
+      failureCondition: 'result[0] < 0.95'
+      provider:
+        prometheus:
+          address: http://prometheus.gitops-demo.svc.cluster.local:9090
+          query: |
+            (
+              sum(increase(demo_sqs_poll_total{rollouts_pod_template_hash="{{args.canary-hash}}",result="success"}[1m]))
+              /
+              sum(increase(demo_sqs_poll_total{rollouts_pod_template_hash="{{args.canary-hash}}"}[1m]))
+            ) or vector(0)
+    - name: sqs-message-failure-rate
+      initialDelay: 45s
+      interval: 15s
+      count: 3
+      failureLimit: 0
+      successCondition: 'result[0] <= 0.05'
+      failureCondition: 'result[0] > 0.05'
+      provider:
+        prometheus:
+          address: http://prometheus.gitops-demo.svc.cluster.local:9090
+          query: |
+            (
+              sum(increase(demo_sqs_message_total{rollouts_pod_template_hash="{{args.canary-hash}}",result="failure"}[1m]))
+              /
+              clamp_min(sum(increase(demo_sqs_message_total{rollouts_pod_template_hash="{{args.canary-hash}}"}[1m])), 1)
+            ) or vector(0)
