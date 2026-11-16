@@ -46,11 +46,13 @@ public class RestController {
         if (request == null || request.message() == null || request.message().isBlank()
                 || request.message().length() > 255
                 || (request.description() != null
-                        && (request.description().isBlank() || request.description().length() > 255))) {
+                        && (request.description().isBlank() || request.description().length() > 255))
+                || (request.category() != null
+                        && (request.category().isBlank() || request.category().length() > 32))) {
             throw new WebApplicationException("message must contain 1 to 255 characters; "
-                    + "description must be at most 255 characters", 400);
+                    + "description must be at most 255 characters; category at most 32 characters", 400);
         }
-        StoredInfo created = messages.create(request.message(), request.description());
+        StoredInfo created = messages.create(request.message(), request.description(), request.category());
         return Response.status(Response.Status.CREATED).entity(response(created)).build();
     }
 

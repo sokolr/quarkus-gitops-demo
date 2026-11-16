@@ -24,7 +24,7 @@ public class MessageRepository {
     public StoredInfo read() {
         try (var connection = dataSource.getConnection();
                 var statement = connection.prepareStatement(
-                        "SELECT id, message, description FROM service_message ORDER BY id DESC LIMIT 1");
+                        "SELECT id, message, description, category FROM service_message ORDER BY id DESC LIMIT 1");
                 var rows = statement.executeQuery()) {
             return singleRow(rows);
         } catch (SQLException e) {
@@ -32,13 +32,14 @@ public class MessageRepository {
         }
     }
 
-    public StoredInfo create(String message, String description) {
+    public StoredInfo create(String message, String description, String category) {
         return write("InfoCreated", connection -> {
             try (var statement = connection.prepareStatement(
-                    "INSERT INTO service_message (message, description) VALUES (?, ?) "
-                            + "RETURNING id, message, description")) {
+                    "INSERT INTO service_message (message, description, category) VALUES (?, ?, ?) "
+                            + "RETURNING id, message, description, category")) {
                 statement.setString(1, message);
                 statement.setString(2, description);
+                statement.setString(3, category == null ? "general" : category);
                 try (var rows = statement.executeQuery()) {
                     return singleRow(rows);
                 }
@@ -51,7 +52,7 @@ public class MessageRepository {
             try (var statement = connection.prepareStatement(
                     "UPDATE service_message SET message = ? "
                             + "WHERE id = (SELECT max(id) FROM service_message) "
-                            + "RETURNING id, message, description")) {
+                            + "RETURNING id, message, description, category")) {
                 statement.setString(1, message);
                 try (var rows = statement.executeQuery()) {
                     return singleRow(rows);
@@ -65,7 +66,7 @@ public class MessageRepository {
             try (var statement = connection.prepareStatement(
                     "UPDATE service_message SET description = ? "
                             + "WHERE id = (SELECT max(id) FROM service_message) "
-                            + "RETURNING id, message, description")) {
+                            + "RETURNING id, message, description, category")) {
                 statement.setString(1, description);
                 try (var rows = statement.executeQuery()) {
                     return singleRow(rows);
@@ -82,7 +83,7 @@ public class MessageRepository {
                 if (result.id() != 0) {
                     UUID eventId = UUID.randomUUID();
                     var event = new DomainEvent(eventId.toString(), result.id(), eventType, 1,
-                            result.message(), result.description());
+                            result.message(), result.description(), 2, result.category());
                     try (var statement = connection.prepareStatement(
                             "INSERT INTO outbox_event (event_id, aggregate_id, payload) VALUES (?, ?, ?::jsonb)")) {
                         statement.setObject(1, eventId);
@@ -108,9 +109,9 @@ public class MessageRepository {
 
     private StoredInfo singleRow(ResultSet rows) throws SQLException {
         if (!rows.next()) {
-            return new StoredInfo(0, null, null);
+            return new StoredInfo(0, null, null, null);
         }
-        return new StoredInfo(rows.getLong(1), rows.getString(2), rows.getString(3));
+        return new StoredInfo(rows.getLong(1), rows.getString(2), rows.getString(3), rows.getString(4));
     }
 
     @FunctionalInterface
@@ -118,6 +119,6 @@ public class MessageRepository {
         StoredInfo execute(Connection connection) throws SQLException;
     }
 
-    public record StoredInfo(long id, String message, String description) {
+    public record StoredInfo(long id, String message, String description, String category) {
     }
 }

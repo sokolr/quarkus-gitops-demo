@@ -1,4 +1,4 @@
 package gitops.demo.dto;
 
-public record CreateInfoRequest(String message, String description) {
+public record CreateInfoRequest(String message, String description, String category) {
 }
